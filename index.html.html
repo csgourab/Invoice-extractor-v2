@@ -1,0 +1,970 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Invoice Extractor</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+:root {
+  --bg: #0f1117;
+  --card: #161b27;
+  --border: #1e2535;
+  --border2: #2a3348;
+  --text: #e2e8f0;
+  --muted: #64748b;
+  --accent: #3b82f6;
+  --accent-dim: rgba(59,130,246,0.12);
+  --green: #22c55e;
+  --green-dim: rgba(34,197,94,0.1);
+  --yellow: #f59e0b;
+  --yellow-dim: rgba(245,158,11,0.1);
+  --red: #ef4444;
+  --red-dim: rgba(239,68,68,0.1);
+  --purple: #a855f7;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  min-height: 100vh;
+  padding: 32px 16px 80px;
+}
+
+.wrap { max-width: 1100px; margin: 0 auto; }
+
+/* ── Header ── */
+.hdr {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 32px;
+}
+.hdr-left h1 {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: #fff;
+}
+.hdr-left p { color: var(--muted); font-size: 13px; margin-top: 4px; }
+
+.badge-free {
+  background: var(--green-dim);
+  border: 1px solid rgba(34,197,94,0.3);
+  color: var(--green);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 4px 10px;
+  border-radius: 20px;
+  letter-spacing: 0.05em;
+}
+
+/* ── Upload card ── */
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 24px;
+  margin-bottom: 20px;
+}
+
+.drop-zone {
+  border: 2px dashed var(--border2);
+  border-radius: 10px;
+  padding: 40px 24px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: rgba(255,255,255,0.01);
+}
+.drop-zone:hover, .drop-zone.over {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+}
+.drop-zone input { display: none; }
+
+.drop-icon { font-size: 36px; margin-bottom: 12px; display: block; }
+.drop-title { font-size: 16px; font-weight: 600; color: #fff; margin-bottom: 6px; }
+.drop-hint { font-size: 12px; color: var(--muted); line-height: 1.6; }
+.drop-hint b { color: var(--accent); font-weight: 500; }
+
+/* ── Queue ── */
+.queue-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.queue-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.queue-count {
+  background: var(--accent-dim);
+  color: var(--accent);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.queue-list { display: flex; flex-direction: column; gap: 6px; }
+
+.q-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  transition: border-color 0.15s;
+}
+.q-item.done  { border-color: rgba(34,197,94,0.3);  background: var(--green-dim);  }
+.q-item.error { border-color: rgba(239,68,68,0.3);  background: var(--red-dim);    }
+.q-item.active{ border-color: rgba(59,130,246,0.4); background: var(--accent-dim); }
+
+.q-icon { font-size: 18px; flex-shrink: 0; }
+.q-info { flex: 1; min-width: 0; }
+.q-name { font-weight: 500; font-size: 13px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.q-meta { font-size: 11px; color: var(--muted); margin-top: 2px; font-family: 'JetBrains Mono', monospace; }
+.q-status { font-size: 11px; font-family: 'JetBrains Mono', monospace; flex-shrink: 0; }
+.q-status.ok  { color: var(--green); }
+.q-status.err { color: var(--red); }
+.q-status.run { color: var(--accent); }
+
+.q-remove {
+  background: none;
+  border: 1px solid var(--border2);
+  color: var(--muted);
+  cursor: pointer;
+  width: 24px; height: 24px;
+  border-radius: 4px;
+  font-size: 12px;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.12s;
+  flex-shrink: 0;
+}
+.q-remove:hover { border-color: var(--red); color: var(--red); background: var(--red-dim); }
+
+/* ── Buttons row ── */
+.btn-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  border: none;
+  letter-spacing: 0.01em;
+}
+.btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+}
+.btn-primary:hover:not(:disabled) { background: #2563eb; box-shadow: 0 4px 16px rgba(59,130,246,0.3); }
+
+.btn-success {
+  background: var(--green);
+  color: #000;
+}
+.btn-success:hover:not(:disabled) { background: #16a34a; }
+
+.btn-ghost {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid var(--border2);
+  color: var(--text);
+}
+.btn-ghost:hover:not(:disabled) { background: rgba(255,255,255,0.09); border-color: var(--muted); }
+
+/* ── Progress bar ── */
+.progress-wrap { display: none; margin-top: 14px; }
+.progress-wrap.show { display: block; }
+.progress-label { font-size: 12px; color: var(--muted); margin-bottom: 6px; font-family: 'JetBrains Mono', monospace; }
+.progress-bar { height: 4px; background: var(--border2); border-radius: 2px; overflow: hidden; }
+.progress-fill { height: 100%; background: var(--accent); border-radius: 2px; transition: width 0.3s; width: 0%; }
+
+/* ── Preview table ── */
+.preview-card { display: none; }
+.preview-card.show { display: block; }
+
+.preview-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.preview-title { font-size: 16px; font-weight: 700; color: #fff; }
+.preview-title span {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--green);
+  font-family: 'JetBrains Mono', monospace;
+  margin-left: 8px;
+}
+
+.table-scroll { overflow-x: auto; border-radius: 8px; border: 1px solid var(--border); }
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  white-space: nowrap;
+  min-width: 1000px;
+}
+
+thead tr { background: rgba(255,255,255,0.05); }
+thead th {
+  padding: 10px 12px;
+  text-align: left;
+  font-weight: 600;
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+thead th:first-child { width: 40px; text-align: center; color: var(--muted); }
+
+tbody tr { border-bottom: 1px solid var(--border); transition: background 0.1s; }
+tbody tr:last-child { border-bottom: none; }
+tbody tr:hover { background: rgba(255,255,255,0.03); }
+
+tbody td {
+  padding: 10px 12px;
+  color: var(--text);
+  vertical-align: middle;
+}
+tbody td:first-child { text-align: center; color: var(--muted); font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+
+.td-edit {
+  outline: none;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text);
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  min-width: 80px;
+  max-width: 200px;
+  width: 100%;
+  transition: border-color 0.15s;
+}
+.td-edit:focus { border-color: var(--accent); background: rgba(59,130,246,0.06); outline: none; }
+.td-edit.amount { font-family: 'JetBrains Mono', monospace; color: var(--green); text-align: right; }
+.td-edit.date-field { font-family: 'JetBrains Mono', monospace; color: var(--yellow); }
+.td-edit.isp-field { color: var(--purple); }
+
+.row-del {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 14px;
+  transition: all 0.12s;
+}
+.row-del:hover { color: var(--red); background: var(--red-dim); }
+
+/* ── Empty hint ── */
+.empty-hint {
+  text-align: center;
+  padding: 40px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* ── Toast ── */
+.toast {
+  position: fixed;
+  bottom: 24px; right: 24px;
+  background: #1e2535;
+  border: 1px solid var(--border2);
+  border-radius: 10px;
+  padding: 12px 18px;
+  font-size: 13px;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  z-index: 999;
+  transform: translateY(80px);
+  opacity: 0;
+  transition: all 0.3s;
+  max-width: 340px;
+}
+.toast.show { transform: translateY(0); opacity: 1; }
+.toast.ok { border-color: rgba(34,197,94,0.4); }
+.toast.err { border-color: rgba(239,68,68,0.4); }
+
+@media (max-width: 600px) {
+  .btn-row { flex-direction: column; }
+  .btn { width: 100%; justify-content: center; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- Header -->
+  <div class="hdr">
+    <div class="hdr-left">
+      <h1>📄 Invoice → Excel Extractor</h1>
+      <p>Upload one or multiple invoice PDFs → auto-extract → download as Excel</p>
+    </div>
+    <span class="badge-free">✓ 100% FREE · No server</span>
+  </div>
+
+  <!-- Upload card -->
+  <div class="card">
+    <div class="drop-zone" id="dropZone">
+      <input type="file" id="fileInput" accept=".pdf" multiple />
+      <span class="drop-icon">🗂️</span>
+      <div class="drop-title">Drop invoice PDFs here</div>
+      <div class="drop-hint">
+        or <b>click to browse</b> · Select multiple files at once<br>
+        Works with any GST / tax / service invoice · Runs entirely in your browser
+      </div>
+    </div>
+
+    <!-- Queue -->
+    <div id="queueWrap" style="display:none; margin-top:16px;">
+      <div class="queue-header">
+        <span class="queue-label">Files Queued</span>
+        <span class="queue-count" id="queueCount">0</span>
+      </div>
+      <div class="queue-list" id="queueList"></div>
+    </div>
+
+    <!-- Progress -->
+    <div class="progress-wrap" id="progressWrap">
+      <div class="progress-label" id="progressLabel">Processing…</div>
+      <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+    </div>
+
+    <!-- Buttons -->
+    <div class="btn-row">
+      <button class="btn btn-primary" id="extractBtn" disabled>⚡ Extract All</button>
+      <button class="btn btn-success" id="downloadBtn" disabled>⬇ Download Excel</button>
+      <button class="btn btn-ghost" id="clearAllBtn" style="display:none">🗑 Clear All</button>
+    </div>
+    <div style="margin-top:8px; font-size:11px; color:var(--muted); font-family:'JetBrains Mono',monospace;">
+      ✓ FREE &nbsp;·&nbsp; No API key &nbsp;·&nbsp; No signup &nbsp;·&nbsp; Everything runs in your browser
+    </div>
+  </div>
+
+  <!-- Preview table -->
+  <div class="card preview-card" id="previewCard">
+    <div class="preview-topbar">
+      <div class="preview-title">
+        Extracted Data
+        <span id="rowCount">0 rows</span>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <span style="font-size:11px;color:var(--muted);">✏️ Click any cell to edit</span>
+        <button class="btn btn-success" id="downloadBtn2">⬇ Download Excel</button>
+      </div>
+    </div>
+
+    <div class="table-scroll">
+      <table id="dataTable">
+        <thead>
+          <tr>
+            <th>SL</th>
+            <th>ISP</th>
+            <th>Vendor Name</th>
+            <th>Relationship No</th>
+            <th>Location</th>
+            <th>Vendor GST Number</th>
+            <th>Bill No / Invoice Num</th>
+            <th>Bill Date</th>
+            <th>From Date</th>
+            <th>To Date</th>
+            <th>Due Date</th>
+            <th>Basic Amount</th>
+            <th>CGST</th>
+            <th>SGST</th>
+            <th>Invoice Amount</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="tableBody">
+          <tr><td colspan="16" class="empty-hint">No data yet — upload PDFs and click Extract All</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+  'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+// ── State ──
+let fileQueue = [];     // {file, id, status: 'pending'|'processing'|'done'|'error', data}
+let rows = [];          // extracted row objects
+let nextId = 1;
+
+// ── DOM ──
+const dropZone    = document.getElementById('dropZone');
+const fileInput   = document.getElementById('fileInput');
+const queueWrap   = document.getElementById('queueWrap');
+const queueList   = document.getElementById('queueList');
+const queueCount  = document.getElementById('queueCount');
+const extractBtn  = document.getElementById('extractBtn');
+const downloadBtn = document.getElementById('downloadBtn');
+const downloadBtn2= document.getElementById('downloadBtn2');
+const clearAllBtn = document.getElementById('clearAllBtn');
+const progressWrap= document.getElementById('progressWrap');
+const progressLabel=document.getElementById('progressLabel');
+const progressFill= document.getElementById('progressFill');
+const previewCard = document.getElementById('previewCard');
+const tableBody   = document.getElementById('tableBody');
+const rowCountEl  = document.getElementById('rowCount');
+
+// ── Upload wiring ──
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault(); dropZone.classList.remove('over');
+  addFiles([...e.dataTransfer.files]);
+});
+fileInput.addEventListener('change', () => { addFiles([...fileInput.files]); fileInput.value = ''; });
+
+function addFiles(files) {
+  const pdfs = files.filter(f => f.type === 'application/pdf' || f.name.endsWith('.pdf'));
+  if (!pdfs.length) { showToast('Please select PDF files', 'err'); return; }
+  pdfs.forEach(f => {
+    fileQueue.push({ file: f, id: nextId++, status: 'pending', data: null });
+  });
+  renderQueue();
+  extractBtn.disabled = false;
+  clearAllBtn.style.display = 'inline-flex';
+}
+
+function renderQueue() {
+  queueWrap.style.display = fileQueue.length ? 'block' : 'none';
+  queueCount.textContent = fileQueue.length;
+  queueList.innerHTML = '';
+  fileQueue.forEach(item => {
+    const el = document.createElement('div');
+    el.className = 'q-item' + (item.status === 'done' ? ' done' : item.status === 'error' ? ' error' : item.status === 'processing' ? ' active' : '');
+    el.id = 'qi-' + item.id;
+    const icon = item.status === 'done' ? '✅' : item.status === 'error' ? '❌' : item.status === 'processing' ? '⏳' : '📄';
+    const statusTxt = item.status === 'done' ? 'done' : item.status === 'error' ? 'failed' : item.status === 'processing' ? 'reading…' : 'queued';
+    const statusCls = item.status === 'done' ? 'ok' : item.status === 'error' ? 'err' : 'run';
+    el.innerHTML = `
+      <span class="q-icon">${icon}</span>
+      <div class="q-info">
+        <div class="q-name">${item.file.name}</div>
+        <div class="q-meta">${(item.file.size/1024).toFixed(1)} KB</div>
+      </div>
+      <span class="q-status ${statusCls}">${statusTxt}</span>
+      ${item.status === 'pending' ? `<button class="q-remove" data-id="${item.id}">✕</button>` : ''}
+    `;
+    queueList.appendChild(el);
+  });
+
+  // remove handlers
+  queueList.querySelectorAll('.q-remove').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = parseInt(btn.dataset.id);
+      fileQueue = fileQueue.filter(i => i.id !== id);
+      if (!fileQueue.length) extractBtn.disabled = true;
+      renderQueue();
+    });
+  });
+}
+
+clearAllBtn.addEventListener('click', () => {
+  fileQueue = []; rows = [];
+  renderQueue();
+  renderTable();
+  extractBtn.disabled = true;
+  downloadBtn.disabled = true;
+  previewCard.classList.remove('show');
+  clearAllBtn.style.display = 'none';
+  progressWrap.classList.remove('show');
+});
+
+// ── Extract all ──
+extractBtn.addEventListener('click', extractAll);
+
+async function extractAll() {
+  const pending = fileQueue.filter(i => i.status === 'pending');
+  if (!pending.length) { showToast('No pending files to process', 'err'); return; }
+
+  extractBtn.disabled = true;
+  progressWrap.classList.add('show');
+
+  for (let i = 0; i < pending.length; i++) {
+    const item = pending[i];
+    item.status = 'processing';
+    renderQueue();
+    progressLabel.textContent = `Processing ${i+1} of ${pending.length}: ${item.file.name}`;
+    progressFill.style.width = ((i / pending.length) * 100) + '%';
+
+    try {
+      const text = await extractPDFText(item.file);
+      const data = parseInvoice(text, rows.length + 1);
+      item.data = data;
+      item.status = 'done';
+      rows.push(data);
+    } catch(e) {
+      item.status = 'error';
+      console.error(e);
+    }
+    renderQueue();
+  }
+
+  progressFill.style.width = '100%';
+  progressLabel.textContent = `Done — ${rows.length} invoice(s) extracted`;
+  setTimeout(() => progressWrap.classList.remove('show'), 2500);
+
+  extractBtn.disabled = false;
+  if (rows.length) {
+    downloadBtn.disabled = false;
+    previewCard.classList.add('show');
+    renderTable();
+    showToast(`✅ ${rows.length} invoice(s) extracted successfully`, 'ok');
+    // auto-download
+    downloadExcel();
+  }
+}
+
+// ── PDF text extraction ──
+async function extractPDFText(file) {
+  const buf = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+  let out = '';
+  for (let p = 1; p <= pdf.numPages; p++) {
+    const page = await pdf.getPage(p);
+    const content = await page.getTextContent();
+    // Group by Y position to reconstruct lines
+    const lineMap = {};
+    for (const item of content.items) {
+      if (!item.str) continue;
+      const y = Math.round(item.transform[5]);
+      if (!lineMap[y]) lineMap[y] = [];
+      lineMap[y].push({ x: item.transform[4], str: item.str });
+    }
+    const ys = Object.keys(lineMap).map(Number).sort((a, b) => b - a);
+    for (const y of ys) {
+      lineMap[y].sort((a, b) => a.x - b.x);
+      out += lineMap[y].map(i => i.str).join(' ') + '\n';
+    }
+    out += '\n';
+  }
+  return out;
+}
+
+// ── Helpers ──
+function grab(text, ...patterns) {
+  for (const p of patterns) {
+    const m = text.match(p);
+    if (m) return (m[1] || m[0]).trim();
+  }
+  return '';
+}
+
+function grabAll(text, pattern) {
+  return [...text.matchAll(new RegExp(pattern, 'gi'))].map(m => (m[1] || m[0]).trim());
+}
+
+// Parse date to DD/MM/YYYY string
+function parseDate(raw) {
+  if (!raw) return '';
+  raw = raw.trim();
+
+  // Already DD/MM/YYYY (with optional single digit)
+  let m = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (m) return `${m[1].padStart(2,'0')}/${m[2].padStart(2,'0')}/${m[3]}`;
+
+  // ISO: 2026-01-05
+  m = raw.match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return `${m[3]}/${m[2]}/${m[1]}`;
+
+  // "1st Feb 2026" / "30th Apr 2026" / "05 January 2026" / "14 Jan 2026"
+  m = raw.match(/(\d{1,2})(?:st|nd|rd|th)?\s+([A-Za-z]+)\s+(\d{4})/);
+  if (m) {
+    const months = { jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12,
+                     january:1,february:2,march:3,april:4,june:6,july:7,august:8,september:9,october:10,november:11,december:12 };
+    const mo = months[m[2].toLowerCase().slice(0,3)];
+    if (mo) return `${m[1].padStart(2,'0')}/${String(mo).padStart(2,'0')}/${m[3]}`;
+  }
+
+  return raw;
+}
+
+// ── Main invoice parser → maps to exact columns ──
+function parseInvoice(t, slNum) {
+  const tLow = t.toLowerCase();
+
+  // ─ Detect invoice format ─
+  const isSSCable    = /SS\s*CABLE\s*AND\s*BROADBAND/i.test(t);
+  const isMeghbela   = /MEGHBELA\s*CABLE\s*&\s*BROADBAND/i.test(t);
+  const isSharktel   = /SHARKTEL\s*INFOCOM/i.test(t);
+
+  // ─ Vendor Name ─
+  let vendorName = '';
+  if (isSSCable) {
+    vendorName = 'SS CABLE AND BROADBAND SERVICE';
+  } else if (isMeghbela) {
+    vendorName = 'MEGHBELA CABLE & BROADBAND SERVICES PVT. LTD.';
+  } else if (isSharktel) {
+    vendorName = 'SHARKTEL INFOCOM PRIVATE LIMITED';
+  } else {
+    // Generic fallback: try to find company name at top of invoice
+    vendorName = grab(t,
+      /^([A-Z][A-Z\s&.]+(?:PRIVATE\s+LIMITED|LIMITED|LTD\.?|PVT\.?\s*LTD\.?))/m,
+      /Invoice\s*From[\s\S]{0,80}?([A-Z][A-Z\s&]+(?:PRIVATE\s+LIMITED|LIMITED|LTD|PVT\.?\s*LTD\.?))/i
+    ) || grab(t, /([A-Z]{2}[A-Z\s&]{5,60}(?:LIMITED|LTD|PVT))/i);
+  }
+
+  // ─ ISP label ─
+  let ispLabel = 'ISP';
+  if (tLow.includes('electricity') || tLow.includes('power') || tLow.includes('wbsedcl')) ispLabel = 'Electricity';
+  else if (tLow.includes('aws') || tLow.includes('azure') || tLow.includes('cloud')) ispLabel = 'Cloud';
+  else if (tLow.includes('mobile') || tLow.includes('postpaid')) ispLabel = 'Mobile';
+
+  // ─ Relationship No (Circuit ID) ─
+  let relNo = '';
+  if (isSSCable || isSharktel) {
+    // Format: "Circuit ID - 22526080004" or "Circuit ID - 25020005"
+    relNo = grab(t,
+      /Circuit\s*ID\s*[-:]\s*([\w\d]+)/i,
+      /Circuit\s*[Ii][Dd][:\s]+([\w\d]+)/
+    );
+  } else if (isMeghbela) {
+    // Format: "Circuit ID : 20005858"
+    relNo = grab(t,
+      /Circuit\s*ID\s*[:\s]+([\d]+)/i
+    );
+  }
+  if (!relNo) {
+    relNo = grab(t,
+      /Circuit\s*[Ii][Dd][:\s-]+([\w\d]+)/,
+      /Relationship\s*No[.:\s]+(\d+)/i,
+      /Consumer\s*No[.:\s]*([\w\d]+)/i,
+      /Customer\s*(?:No|ID)[.:\s]*([\w\d]+)/i
+    );
+  }
+
+  // ─ Location ─ Extract from description/consignee address
+  let location = '';
+  if (isMeghbela) {
+    // "Location A : T1 IBBN DSKOL023 Kolkata Serampore"
+    const locAM = t.match(/Location\s*A\s*[:\s]+(.+?)(?:\n|Location\s*B)/i);
+    if (locAM) {
+      // Extract city hint from Location A
+      const locWords = locAM[1].replace(/[\r\n]+/g,' ').trim();
+      // Try to get meaningful place name (last word that looks like a city)
+      const cityM = locWords.match(/\b(Kolkata|Serampore|Howrah|Hooghly|Barasat|Dum\s*Dum|Salt\s*Lake|Rajarhat|Baranagar|Nazirabad|Karimpur)\b/i);
+      location = cityM ? cityM[1] : locWords.split(/\s+/).slice(-1)[0];
+    }
+    if (!location) {
+      const locBM = t.match(/Location\s*B\s*[:\s]+([\s\S]{0,200})/i);
+      if (locBM) {
+        const cityM2 = locBM[1].match(/\b(Serampore|Kolkata|Howrah|Hooghly|Barasat|Dum\s*Dum|Salt\s*Lake|Rajarhat|Baranagar)\b/i);
+        location = cityM2 ? cityM2[1] : '';
+      }
+    }
+  } else if (isSSCable || isSharktel) {
+    // Extract from description line — look for location hints
+    const descM = t.match(/Location\s*[:\-]\s*([A-Za-z][A-Za-z\s]+?)(?:\n|PO|Circuit|Period|From|Quarterly)/i);
+    if (descM) location = descM[1].trim().replace(/\s+/g,' ');
+    // Also try "IBBN" hub location
+    if (!location) {
+      const ibbM = t.match(/(?:IBBN|Hub)\s*[:\(]?\s*([A-Za-z][A-Za-z\s]{2,30}?)(?:\s*Hub|\s*Location|\s*\)|\n)/i);
+      if (ibbM) location = ibbM[1].trim();
+    }
+  }
+  if (!location) {
+    // Generic fallback: city from bill-to address
+    const cityMatch = t.match(/\b(Kolkata|Mumbai|Delhi|Bangalore|Chennai|Hyderabad|Pune|Ahmedabad|Surat|Jaipur|Serampore|Hooghly|Rajarhat|Baranagar|Gobardanga)\b/i);
+    location = cityMatch ? cityMatch[1] : '';
+  }
+
+  // ─ Vendor GST ─
+  // All GSTINs in doc
+  const allGSTINs = [...t.matchAll(/\b([0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][A-Z0-9]Z[A-Z0-9])\b/g)].map(m => m[1]);
+  // Buyer GSTIN we know: 19AACCI2053A1Z4 (Innovative Retail)
+  const buyerGSTIN = '19AACCI2053A1Z4';
+  let vendorGST = '';
+
+  if (isSSCable) {
+    // Supplier GSTIN explicitly labeled
+    vendorGST = grab(t, /GSTIN[:\s]+(19FSPPS3961A1Z9)/i) || '19FSPPS3961A1Z9';
+  } else if (isMeghbela) {
+    vendorGST = grab(t, /Supplier\s*GSTIN[:\s]+([\w]+)/i) || '19AAECM6600R1ZY';
+  } else if (isSharktel) {
+    vendorGST = grab(t, /GSTIN[:\s]+(19AAWCS5449J1ZD)/i) || '19AAWCS5449J1ZD';
+  } else {
+    // Pick GSTIN that is NOT the buyer's
+    vendorGST = allGSTINs.find(g => g !== buyerGSTIN) || allGSTINs[0] || '';
+  }
+
+  // ─ Bill / Invoice Number ─
+  let billNo = '';
+  if (isSSCable) {
+    billNo = grab(t, /#\s*[:\s]*(SS-\d{4}-\d+)/i, /Invoice\s*#?\s*[:\s]*(SS-[\w\-]+)/i);
+    if (!billNo) billNo = grab(t, /\b(SS-\d{4}-\d{4,})\b/);
+  } else if (isMeghbela) {
+    billNo = grab(t, /Document\s*No\s*[:\s]+(C\/[A-Za-z\/\d\-]+)/i);
+    if (!billNo) billNo = grab(t, /\b(C\/\w+\/\d{2}-\d{2}\/\d+)\b/);
+  } else if (isSharktel) {
+    billNo = grab(t, /Invoice\s*#?\s*[:\s]*(SIPL-[\w\-]+)/i);
+    if (!billNo) billNo = grab(t, /\b(SIPL-\d{4}-\d{4,})\b/);
+  } else {
+    billNo = grab(t,
+      /Invoice\s*(?:#|No|Number)[.:\s]+([A-Z0-9\/\-]+)/i,
+      /Bill\s*No[.:\s]+([A-Z0-9\/\-]+)/i,
+      /Document\s*No[.:\s]+([A-Z0-9\/\-]+)/i,
+      /\b(SB\d{2}[A-Z]{2}\d{9,})\b/
+    );
+  }
+
+  // ─ Bill Date ─
+  let billDateRaw = '';
+  if (isSSCable || isSharktel) {
+    // "Invoice Date : 25/03/2026"
+    billDateRaw = grab(t,
+      /Invoice\s*Date\s*[:\s]+(\d{2}\/\d{2}\/\d{4})/i
+    );
+  } else if (isMeghbela) {
+    // "Document Date : 02/02/2026"
+    billDateRaw = grab(t,
+      /Document\s*Date\s*[:\s]+(\d{4}-\d{2}-\d{2})/i,
+      /Document\s*Date\s*[:\s]+(\d{2}\/\d{2}\/\d{4})/i
+    );
+  } else {
+    billDateRaw = grab(t,
+      /(?:Billing|Invoice|Bill)\s*Date[:\s]+(\d{1,2}\s+\w+\s+\d{4}|\d{2}\/\d{2}\/\d{4}|\d{4}-\d{2}-\d{2})/i
+    );
+  }
+
+  // ─ Period (From/To dates) ─
+  let fromDateRaw = '', toDateRaw = '';
+
+  if (isSSCable) {
+    // "Period - 1/02/2026 to 30/04/2026" (may be split across lines as "30/04 /2026")
+    const periodM = t.match(/Period\s*[-:]\s*([\d\/]+(?:\s*\/\s*\d+)?)\s+to\s+([\d\/\s]+\d{4})/i);
+    if (periodM) {
+      fromDateRaw = periodM[1].replace(/\s/g,'');
+      toDateRaw   = periodM[2].replace(/\s/g,'');
+    }
+  } else if (isMeghbela) {
+    // "Period from and To : 1st Feb 2026 to 30th Apr 2026"
+    const periodM = t.match(/Period\s+from\s+and\s+To\s*[:\s]+([\w\s]+?)\s+to\s+([\w\s]+?)(?:\n|Circuit)/i);
+    if (periodM) { fromDateRaw = periodM[1].trim(); toDateRaw = periodM[2].trim(); }
+  } else if (isSharktel) {
+    // "From 27/01/2026 to 30/4/2026"
+    const periodM = t.match(/From\s+(\d{1,2}\/\d{1,2}\/\d{4})\s+to\s+(\d{1,2}\/\d{1,2}\/\d{4})/i);
+    if (periodM) { fromDateRaw = periodM[1]; toDateRaw = periodM[2]; }
+  } else {
+    const periodM = t.match(/(\d{1,2}\s+\w+\s+\d{4})\s+to\s+(\d{1,2}\s+\w+\s+\d{4})/i);
+    if (periodM) { fromDateRaw = periodM[1]; toDateRaw = periodM[2]; }
+    else {
+      fromDateRaw = grab(t, /From\s+Date[:\s]+(\d{1,2}\s+\w+\s+\d{4})/i);
+      toDateRaw   = grab(t, /To\s+Date[:\s]+(\d{1,2}\s+\w+\s+\d{4})/i);
+    }
+  }
+
+  // ─ Due Date ─
+  let dueRaw = grab(t, /Due\s*Date\s*[:\s]+(\d{1,2}\/\d{1,2}\/\d{4}|\d{4}-\d{2}-\d{2}|\d{1,2}\s+\w+\s+\d{4}|Immediate|Due\s+on\s+Receipt)/i);
+  // "Due on Receipt" → use bill date
+  if (!dueRaw || /due\s+on\s+receipt/i.test(dueRaw)) dueRaw = billDateRaw;
+
+  // ─ Amounts ─
+  let basicAmt = '', cgst = '', sgst = '', invoiceAmt = '';
+
+  if (isSSCable || isSharktel) {
+    // Sub Total line
+    basicAmt  = grab(t, /Sub\s*Total\s+([\d,]+\.?\d*)/i);
+    cgst      = grab(t, /CGST[\w\s()%]+?([\d,]+\.\d{2})(?!\s*%)/i);
+    sgst      = grab(t, /SGST[\w\s()%]+?([\d,]+\.\d{2})(?!\s*%)/i);
+    invoiceAmt = grab(t, /Total\s+[₹]?([\d,]+\.\d{2})\s*$/m, /Balance\s*Due\s+[₹]?([\d,]+\.\d{2})/i);
+    // Better: grab the ₹ Total line
+    const totalM = t.match(/\bTotal\b\s+₹([\d,]+\.\d{2})/);
+    if (totalM) invoiceAmt = totalM[1];
+  } else if (isMeghbela) {
+    basicAmt   = grab(t, /Assessable\s*Value\s+([\d,]+\.?\d*)/i, /Taxable\s*Value\s+([\d,]+\.?\d*)/i);
+    cgst       = grab(t, /CGST\s+[₹]?([\d,]+\.\d{2})/i);
+    sgst       = grab(t, /SGST\s+[₹]?([\d,]+\.\d{2})/i);
+    invoiceAmt = grab(t, /Total\s+Invoice\s+Value\s*\(INR\)\s+[₹]?([\d,]+\.\d{2})/i);
+  } else {
+    basicAmt   = grab(t, /Sub[\s-]?Total[^0-9]*([\d,]+(?:\.\d{2})?)/i, /Taxable\s*Value[^0-9]*([\d,]+(?:\.\d{2})?)/i);
+    cgst       = grab(t, /CGST[^0-9%]*([\d,]+\.\d{2})/i);
+    sgst       = grab(t, /SGST[^0-9%]*([\d,]+\.\d{2})/i);
+    invoiceAmt = grab(t, /Total\s+Invoice\s+Value[^0-9]*([\d,]+\.\d{2})/i,
+                        /Grand\s*Total[^0-9]*([\d,]+\.\d{2})/i,
+                        /Net\s*Payable[^0-9]*([\d,]+\.\d{2})/i,
+                        /INVOICE\s*AMOUNT[^0-9]*([\d,]+\.\d{2})/i);
+  }
+
+  return {
+    sl:          slNum,
+    isp:         ispLabel,
+    vendorName:  vendorName,
+    relNo:       relNo,
+    location:    location,
+    vendorGST:   vendorGST,
+    billNo:      billNo,
+    billDate:    parseDate(billDateRaw),
+    fromDate:    parseDate(fromDateRaw),
+    toDate:      parseDate(toDateRaw),
+    dueDate:     parseDate(dueRaw),
+    basicAmt:    (basicAmt  || '').replace(/,/g,''),
+    cgst:        (cgst      || '').replace(/,/g,''),
+    sgst:        (sgst      || '').replace(/,/g,''),
+    invoiceAmt:  (invoiceAmt|| '').replace(/,/g,'')
+  };
+}
+
+// ── Render table ──
+const COLS = ['isp','vendorName','relNo','location','vendorGST','billNo','billDate','fromDate','toDate','dueDate','basicAmt','cgst','sgst','invoiceAmt'];
+const AMT_COLS  = new Set(['basicAmt','cgst','sgst','invoiceAmt']);
+const DATE_COLS = new Set(['billDate','fromDate','toDate','dueDate']);
+const ISP_COLS  = new Set(['isp']);
+
+function renderTable() {
+  tableBody.innerHTML = '';
+  if (!rows.length) {
+    tableBody.innerHTML = '<tr><td colspan="16" class="empty-hint">No data yet — upload PDFs and click Extract All</td></tr>';
+    rowCountEl.textContent = '0 rows';
+    return;
+  }
+  rowCountEl.textContent = rows.length + ' row' + (rows.length > 1 ? 's' : '');
+
+  rows.forEach((row, idx) => {
+    const tr = document.createElement('tr');
+    let html = `<td>${row.sl}</td>`;
+    for (const col of COLS) {
+      const cls = AMT_COLS.has(col) ? ' amount' : DATE_COLS.has(col) ? ' date-field' : ISP_COLS.has(col) ? ' isp-field' : '';
+      html += `<td><input class="td-edit${cls}" data-row="${idx}" data-col="${col}" value="${escVal(row[col])}" /></td>`;
+    }
+    html += `<td><button class="row-del" data-idx="${idx}" title="Remove row">🗑</button></td>`;
+    tr.innerHTML = html;
+    tableBody.appendChild(tr);
+  });
+
+  // Wire cell edits
+  tableBody.querySelectorAll('.td-edit').forEach(inp => {
+    inp.addEventListener('change', () => {
+      const r = parseInt(inp.dataset.row);
+      const c = inp.dataset.col;
+      rows[r][c] = inp.value;
+    });
+  });
+
+  // Wire delete
+  tableBody.querySelectorAll('.row-del').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = parseInt(btn.dataset.idx);
+      rows.splice(idx, 1);
+      rows.forEach((r, i) => r.sl = i + 1);
+      renderTable();
+    });
+  });
+}
+
+function escVal(v) {
+  return String(v || '').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+}
+
+// ── Download Excel ──
+function downloadExcel() {
+  if (!rows.length) { showToast('Nothing to download yet', 'err'); return; }
+
+  const headers = ['SL','ISP','Vendor Name','Relationship No','Location','Vendor GST Number',
+                   'Bill No/Invoice num','Bill Date','From Date','To Date','Due Date',
+                   'Basic Amount','CGST','SGST','Invoice Amount'];
+
+  const data = [headers, ...rows.map(r => [
+    r.sl, r.isp, r.vendorName, r.relNo, r.location, r.vendorGST,
+    r.billNo, r.billDate, r.fromDate, r.toDate, r.dueDate,
+    r.basicAmt ? parseFloat(r.basicAmt) || r.basicAmt : '',
+    r.cgst     ? parseFloat(r.cgst)     || r.cgst     : '',
+    r.sgst     ? parseFloat(r.sgst)     || r.sgst     : '',
+    r.invoiceAmt ? parseFloat(r.invoiceAmt) || r.invoiceAmt : ''
+  ])];
+
+  const ws = XLSX.utils.aoa_to_sheet(data);
+
+  // Column widths
+  ws['!cols'] = [
+    {wch:5},{wch:12},{wch:38},{wch:16},{wch:14},{wch:22},
+    {wch:22},{wch:13},{wch:13},{wch:13},{wch:13},
+    {wch:14},{wch:12},{wch:12},{wch:16}
+  ];
+
+  // Header row style
+  headers.forEach((_, ci) => {
+    const cell = XLSX.utils.encode_cell({ r: 0, c: ci });
+    if (ws[cell]) ws[cell].s = {
+      font: { bold: true, color: { rgb: '1a1814' } },
+      fill: { fgColor: { rgb: 'FFE082' } },
+      alignment: { horizontal: 'center', wrapText: true }
+    };
+  });
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Invoice Data');
+
+  const ts = new Date().toISOString().slice(0,10);
+  XLSX.writeFile(wb, `invoices_${ts}.xlsx`);
+  showToast('✅ Excel downloaded!', 'ok');
+}
+
+downloadBtn.addEventListener('click', downloadExcel);
+downloadBtn2.addEventListener('click', downloadExcel);
+
+// ── Toast ──
+let toastTimer;
+function showToast(msg, type = 'ok') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show ' + type;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.className = 'toast'; }, 3000);
+}
+</script>
+</body>
+</html>

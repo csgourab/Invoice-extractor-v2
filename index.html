@@ -3,215 +3,579 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Invoice Extractor</title>
+<title>INVOX // Invoice Neural Extractor</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Share+Tech+Mono&family=Exo+2:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
-
 :root {
-  --bg: #0f1117;
-  --card: #161b27;
-  --border: #1e2535;
-  --border2: #2a3348;
-  --text: #e2e8f0;
-  --muted: #64748b;
-  --accent: #3b82f6;
-  --accent-dim: rgba(59,130,246,0.12);
-  --green: #22c55e;
-  --green-dim: rgba(34,197,94,0.1);
-  --yellow: #f59e0b;
-  --yellow-dim: rgba(245,158,11,0.1);
-  --red: #ef4444;
-  --red-dim: rgba(239,68,68,0.1);
-  --purple: #a855f7;
+  --bg:        #020408;
+  --bg2:       #030810;
+  --panel:     #060d1a;
+  --panel2:    #08111f;
+  --border:    #0a1628;
+  --glow:      #00d4ff;
+  --glow2:     #00ff9d;
+  --glow3:     #ff6b00;
+  --glow4:     #b400ff;
+  --text:      #c8e8ff;
+  --text2:     #5a8aaa;
+  --dim:       #1a3050;
+  --red:       #ff2d55;
+  --red-dim:   rgba(255,45,85,0.08);
+  --cyan-dim:  rgba(0,212,255,0.06);
+  --green-dim: rgba(0,255,157,0.07);
 }
 
-* { box-sizing: border-box; margin: 0; padding: 0; }
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
 html { scroll-behavior: smooth; }
 
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: 'Inter', sans-serif;
+  font-family: 'Exo 2', sans-serif;
   font-size: 14px;
   min-height: 100vh;
-  padding: 32px 16px 80px;
+  overflow-x: hidden;
+  cursor: crosshair;
 }
 
-.wrap { max-width: 1100px; margin: 0 auto; }
+/* ── Animated grid background ── */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(0,212,255,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,212,255,0.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events: none;
+  z-index: 0;
+}
 
-/* ── Header ── */
+body::after {
+  content: '';
+  position: fixed;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(ellipse at 30% 20%, rgba(0,212,255,0.04) 0%, transparent 50%),
+              radial-gradient(ellipse at 70% 80%, rgba(180,0,255,0.04) 0%, transparent 50%),
+              radial-gradient(ellipse at 50% 50%, rgba(0,255,157,0.02) 0%, transparent 60%);
+  pointer-events: none;
+  z-index: 0;
+  animation: bgPulse 12s ease-in-out infinite alternate;
+}
+
+@keyframes bgPulse {
+  0%   { opacity: 0.6; transform: scale(1); }
+  100% { opacity: 1;   transform: scale(1.05); }
+}
+
+.wrap {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 32px 20px 100px;
+  position: relative;
+  z-index: 1;
+}
+
+/* ── Scanline overlay ── */
+.scanlines {
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0,0,0,0.08) 2px,
+    rgba(0,0,0,0.08) 4px
+  );
+  pointer-events: none;
+  z-index: 999;
+}
+
+/* ── HEADER ── */
 .hdr {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 12px;
-  margin-bottom: 32px;
+  gap: 20px;
+  margin-bottom: 40px;
+  padding-bottom: 28px;
+  border-bottom: 1px solid rgba(0,212,255,0.15);
+  position: relative;
 }
-.hdr-left h1 {
-  font-size: 24px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  color: #fff;
-}
-.hdr-left p { color: var(--muted); font-size: 13px; margin-top: 4px; }
 
-.badge-free {
-  background: var(--green-dim);
-  border: 1px solid rgba(34,197,94,0.3);
-  color: var(--green);
-  font-family: 'JetBrains Mono', monospace;
+.hdr::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  width: 200px;
+  height: 1px;
+  background: linear-gradient(90deg, var(--glow), transparent);
+  box-shadow: 0 0 8px var(--glow);
+}
+
+.logo-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.logo {
+  font-family: 'Orbitron', monospace;
+  font-size: 32px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  line-height: 1;
+  background: linear-gradient(135deg, var(--glow) 0%, var(--glow2) 60%, #ffffff 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  filter: drop-shadow(0 0 20px rgba(0,212,255,0.5));
+  animation: logoGlow 4s ease-in-out infinite alternate;
+}
+
+@keyframes logoGlow {
+  0%   { filter: drop-shadow(0 0 15px rgba(0,212,255,0.4)); }
+  100% { filter: drop-shadow(0 0 30px rgba(0,212,255,0.8)) drop-shadow(0 0 60px rgba(0,255,157,0.3)); }
+}
+
+.logo-sub {
+  font-family: 'Share Tech Mono', monospace;
   font-size: 11px;
-  font-weight: 500;
-  padding: 4px 10px;
-  border-radius: 20px;
+  color: var(--text2);
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+}
+
+.logo-sub span { color: var(--glow); }
+
+.hdr-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.status-cluster {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.status-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 2px;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  border: 1px solid;
+  position: relative;
+  overflow: hidden;
+}
+
+.status-pill::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: currentColor;
+  opacity: 0.05;
+}
+
+.pill-online  { color: var(--glow2); border-color: rgba(0,255,157,0.3); }
+.pill-secure  { color: var(--glow);  border-color: rgba(0,212,255,0.3); }
+.pill-local   { color: var(--glow3); border-color: rgba(255,107,0,0.3); }
+
+.dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 6px currentColor;
+  animation: blink 2s ease-in-out infinite;
+}
+@keyframes blink {
+  0%,100% { opacity: 1; }
+  50%      { opacity: 0.3; }
+}
+
+/* ── PANEL (card) ── */
+.panel {
+  background: var(--panel);
+  border: 1px solid rgba(0,212,255,0.1);
+  border-radius: 4px;
+  padding: 0;
+  margin-bottom: 20px;
+  position: relative;
+  overflow: hidden;
+}
+
+.panel::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--glow), transparent);
+  opacity: 0.6;
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 20px;
+  border-bottom: 1px solid rgba(0,212,255,0.08);
+  background: rgba(0,212,255,0.03);
+}
+
+.panel-icon {
+  font-size: 16px;
+  filter: drop-shadow(0 0 6px var(--glow));
+}
+
+.panel-title {
+  font-family: 'Orbitron', monospace;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--glow);
+}
+
+.panel-badge {
+  margin-left: auto;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 10px;
+  padding: 3px 10px;
+  border: 1px solid rgba(0,255,157,0.3);
+  color: var(--glow2);
+  border-radius: 2px;
+  letter-spacing: 0.1em;
+}
+
+.panel-body { padding: 20px; }
+
+/* ── DROP ZONE ── */
+.drop-zone {
+  border: 1px dashed rgba(0,212,255,0.25);
+  border-radius: 4px;
+  padding: 48px 24px;
+  text-align: center;
+  cursor: crosshair;
+  transition: all 0.3s;
+  background:
+    radial-gradient(ellipse at 50% 0%, rgba(0,212,255,0.04) 0%, transparent 70%),
+    var(--panel2);
+  position: relative;
+  overflow: hidden;
+}
+
+.drop-zone::before, .drop-zone::after {
+  content: '';
+  position: absolute;
+  width: 20px; height: 20px;
+  border-color: var(--glow);
+  border-style: solid;
+  transition: all 0.3s;
+  opacity: 0.5;
+}
+.drop-zone::before { top: 12px; left: 12px; border-width: 1px 0 0 1px; }
+.drop-zone::after  { bottom: 12px; right: 12px; border-width: 0 1px 1px 0; }
+
+.drop-zone:hover, .drop-zone.over {
+  border-color: var(--glow);
+  background:
+    radial-gradient(ellipse at 50% 50%, rgba(0,212,255,0.08) 0%, transparent 70%),
+    var(--panel2);
+  box-shadow: 0 0 30px rgba(0,212,255,0.08), inset 0 0 30px rgba(0,212,255,0.04);
+}
+
+.drop-zone:hover::before, .drop-zone.over::before,
+.drop-zone:hover::after,  .drop-zone.over::after {
+  width: 28px; height: 28px; opacity: 1;
+}
+
+.drop-zone input { display: none; }
+
+.drop-zone-inner { position: relative; z-index: 1; }
+
+.drop-icon-wrap {
+  margin-bottom: 16px;
+  display: inline-block;
+}
+
+.drop-hex {
+  width: 72px; height: 72px;
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 4px;
+  font-size: 28px;
+  position: relative;
+  filter: drop-shadow(0 0 10px rgba(0,212,255,0.5));
+  animation: hexPulse 3s ease-in-out infinite;
+}
+
+@keyframes hexPulse {
+  0%,100% { filter: drop-shadow(0 0 8px rgba(0,212,255,0.4)); transform: scale(1); }
+  50%      { filter: drop-shadow(0 0 20px rgba(0,212,255,0.8)); transform: scale(1.05); }
+}
+
+.drop-title {
+  font-family: 'Orbitron', monospace;
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  letter-spacing: 0.1em;
+  margin-bottom: 8px;
+}
+
+.drop-hint {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 11px;
+  color: var(--text2);
+  line-height: 1.8;
   letter-spacing: 0.05em;
 }
 
-/* ── Upload card ── */
-.card {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 24px;
-  margin-bottom: 20px;
-}
+.drop-hint .hl { color: var(--glow); }
+.drop-hint .hl2 { color: var(--glow2); }
 
-.drop-zone {
-  border: 2px dashed var(--border2);
-  border-radius: 10px;
-  padding: 40px 24px;
-  text-align: center;
-  cursor: pointer;
-  transition: all 0.2s;
-  background: rgba(255,255,255,0.01);
-}
-.drop-zone:hover, .drop-zone.over {
-  border-color: var(--accent);
-  background: var(--accent-dim);
-}
-.drop-zone input { display: none; }
+/* ── QUEUE ── */
+.queue-wrap { margin-top: 16px; display: none; }
 
-.drop-icon { font-size: 36px; margin-bottom: 12px; display: block; }
-.drop-title { font-size: 16px; font-weight: 600; color: #fff; margin-bottom: 6px; }
-.drop-hint { font-size: 12px; color: var(--muted); line-height: 1.6; }
-.drop-hint b { color: var(--accent); font-weight: 500; }
-
-/* ── Queue ── */
-.queue-header {
+.queue-hdr {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 12px;
-}
-.queue-label {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--muted);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-.queue-count {
-  background: var(--accent-dim);
-  color: var(--accent);
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 10px;
+  margin-bottom: 10px;
 }
 
-.queue-list { display: flex; flex-direction: column; gap: 6px; }
+.queue-label {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 10px;
+  color: var(--text2);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.queue-count {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 10px;
+  color: var(--glow);
+  padding: 2px 10px;
+  border: 1px solid rgba(0,212,255,0.3);
+  border-radius: 2px;
+}
+
+.queue-list { display: flex; flex-direction: column; gap: 5px; }
 
 .q-item {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   padding: 10px 14px;
-  background: rgba(255,255,255,0.03);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  transition: border-color 0.15s;
+  background: rgba(0,212,255,0.02);
+  border: 1px solid rgba(0,212,255,0.08);
+  border-radius: 3px;
+  transition: all 0.2s;
+  position: relative;
+  overflow: hidden;
 }
-.q-item.done  { border-color: rgba(34,197,94,0.3);  background: var(--green-dim);  }
-.q-item.error { border-color: rgba(239,68,68,0.3);  background: var(--red-dim);    }
-.q-item.active{ border-color: rgba(59,130,246,0.4); background: var(--accent-dim); }
 
-.q-icon { font-size: 18px; flex-shrink: 0; }
+.q-item::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 2px;
+  background: var(--text2);
+  opacity: 0.3;
+}
+
+.q-item.done  { border-color: rgba(0,255,157,0.2);  background: rgba(0,255,157,0.03); }
+.q-item.done::before  { background: var(--glow2); opacity: 1; box-shadow: 0 0 6px var(--glow2); }
+.q-item.error { border-color: rgba(255,45,85,0.2);  background: rgba(255,45,85,0.03); }
+.q-item.error::before { background: var(--red); opacity: 1; }
+.q-item.active{ border-color: rgba(0,212,255,0.3);  background: rgba(0,212,255,0.05); }
+.q-item.active::before{ background: var(--glow); opacity: 1; box-shadow: 0 0 8px var(--glow); animation: scanLine 1s linear infinite; }
+
+@keyframes scanLine {
+  0%   { box-shadow: 0 0 4px var(--glow); }
+  50%  { box-shadow: 0 0 12px var(--glow); }
+  100% { box-shadow: 0 0 4px var(--glow); }
+}
+
+.q-icon { font-size: 16px; flex-shrink: 0; }
 .q-info { flex: 1; min-width: 0; }
-.q-name { font-weight: 500; font-size: 13px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.q-meta { font-size: 11px; color: var(--muted); margin-top: 2px; font-family: 'JetBrains Mono', monospace; }
-.q-status { font-size: 11px; font-family: 'JetBrains Mono', monospace; flex-shrink: 0; }
-.q-status.ok  { color: var(--green); }
+.q-name {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 12px;
+  color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.q-meta {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 10px;
+  color: var(--text2);
+  margin-top: 2px;
+  letter-spacing: 0.05em;
+}
+
+.q-status {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  flex-shrink: 0;
+}
+.q-status.ok  { color: var(--glow2); text-shadow: 0 0 8px var(--glow2); }
 .q-status.err { color: var(--red); }
-.q-status.run { color: var(--accent); }
+.q-status.run { color: var(--glow); text-shadow: 0 0 8px var(--glow); animation: blink 0.8s infinite; }
 
 .q-remove {
   background: none;
-  border: 1px solid var(--border2);
-  color: var(--muted);
+  border: 1px solid rgba(255,45,85,0.2);
+  color: var(--text2);
   cursor: pointer;
-  width: 24px; height: 24px;
-  border-radius: 4px;
-  font-size: 12px;
+  width: 22px; height: 22px;
+  border-radius: 2px;
+  font-size: 11px;
   display: flex; align-items: center; justify-content: center;
-  transition: all 0.12s;
+  transition: all 0.15s;
   flex-shrink: 0;
+  font-family: 'Share Tech Mono', monospace;
 }
-.q-remove:hover { border-color: var(--red); color: var(--red); background: var(--red-dim); }
+.q-remove:hover { border-color: var(--red); color: var(--red); background: var(--red-dim); box-shadow: 0 0 8px rgba(255,45,85,0.3); }
 
-/* ── Buttons row ── */
+/* ── PROGRESS ── */
+.progress-wrap { display: none; margin-top: 16px; }
+.progress-wrap.show { display: block; }
+
+.progress-label {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 11px;
+  color: var(--glow);
+  margin-bottom: 8px;
+  letter-spacing: 0.05em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.progress-label::before {
+  content: '//';
+  color: var(--text2);
+}
+
+.progress-bar {
+  height: 3px;
+  background: rgba(0,212,255,0.1);
+  border-radius: 0;
+  overflow: visible;
+  position: relative;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--glow2), var(--glow));
+  border-radius: 0;
+  transition: width 0.3s;
+  width: 0%;
+  position: relative;
+  box-shadow: 0 0 8px var(--glow), 0 0 20px rgba(0,212,255,0.4);
+}
+
+.progress-fill::after {
+  content: '';
+  position: absolute;
+  right: -1px; top: -3px;
+  width: 3px; height: 9px;
+  background: #fff;
+  box-shadow: 0 0 8px var(--glow);
+}
+
+/* ── BUTTONS ── */
 .btn-row {
   display: flex;
   gap: 10px;
-  margin-top: 16px;
+  margin-top: 18px;
   flex-wrap: wrap;
 }
 
 .btn {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  padding: 10px 20px;
-  border-radius: 8px;
-  font-family: 'Inter', sans-serif;
-  font-size: 13px;
+  gap: 8px;
+  padding: 11px 22px;
+  border-radius: 2px;
+  font-family: 'Orbitron', monospace;
+  font-size: 10px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.15s;
-  border: none;
-  letter-spacing: 0.01em;
+  transition: all 0.2s;
+  border: 1px solid;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  position: relative;
+  overflow: hidden;
 }
-.btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,0.05) 0%, transparent 60%);
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.btn:hover::before { opacity: 1; }
+.btn:disabled { opacity: 0.25; cursor: not-allowed; }
+.btn:disabled:hover::before { opacity: 0; }
 
 .btn-primary {
-  background: var(--accent);
-  color: #fff;
+  background: rgba(0,212,255,0.1);
+  border-color: var(--glow);
+  color: var(--glow);
+  box-shadow: 0 0 15px rgba(0,212,255,0.15), inset 0 0 15px rgba(0,212,255,0.05);
 }
-.btn-primary:hover:not(:disabled) { background: #2563eb; box-shadow: 0 4px 16px rgba(59,130,246,0.3); }
+.btn-primary:hover:not(:disabled) {
+  background: rgba(0,212,255,0.18);
+  box-shadow: 0 0 25px rgba(0,212,255,0.35), inset 0 0 20px rgba(0,212,255,0.1);
+  text-shadow: 0 0 8px var(--glow);
+}
 
 .btn-success {
-  background: var(--green);
-  color: #000;
+  background: rgba(0,255,157,0.08);
+  border-color: var(--glow2);
+  color: var(--glow2);
+  box-shadow: 0 0 15px rgba(0,255,157,0.12);
 }
-.btn-success:hover:not(:disabled) { background: #16a34a; }
+.btn-success:hover:not(:disabled) {
+  background: rgba(0,255,157,0.15);
+  box-shadow: 0 0 25px rgba(0,255,157,0.3);
+  text-shadow: 0 0 8px var(--glow2);
+}
 
 .btn-ghost {
-  background: rgba(255,255,255,0.05);
-  border: 1px solid var(--border2);
+  background: rgba(255,255,255,0.02);
+  border-color: rgba(90,138,170,0.3);
+  color: var(--text2);
+}
+.btn-ghost:hover:not(:disabled) {
+  border-color: var(--text2);
   color: var(--text);
 }
-.btn-ghost:hover:not(:disabled) { background: rgba(255,255,255,0.09); border-color: var(--muted); }
 
-/* ── Progress bar ── */
-.progress-wrap { display: none; margin-top: 14px; }
-.progress-wrap.show { display: block; }
-.progress-label { font-size: 12px; color: var(--muted); margin-bottom: 6px; font-family: 'JetBrains Mono', monospace; }
-.progress-bar { height: 4px; background: var(--border2); border-radius: 2px; overflow: hidden; }
-.progress-fill { height: 100%; background: var(--accent); border-radius: 2px; transition: width 0.3s; width: 0%; }
-
-/* ── Preview table ── */
+/* ── PREVIEW TABLE ── */
 .preview-card { display: none; }
 .preview-card.show { display: block; }
 
@@ -223,207 +587,366 @@ body {
   gap: 10px;
   margin-bottom: 16px;
 }
-.preview-title { font-size: 16px; font-weight: 700; color: #fff; }
-.preview-title span {
+
+.preview-title {
+  font-family: 'Orbitron', monospace;
   font-size: 12px;
-  font-weight: 400;
-  color: var(--green);
-  font-family: 'JetBrains Mono', monospace;
-  margin-left: 8px;
+  font-weight: 700;
+  color: var(--glow);
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
 }
 
-.table-scroll { overflow-x: auto; border-radius: 8px; border: 1px solid var(--border); }
+.preview-title .row-count {
+  font-size: 10px;
+  color: var(--glow2);
+  font-weight: 400;
+  margin-left: 12px;
+  letter-spacing: 0.1em;
+  font-family: 'Share Tech Mono', monospace;
+}
+
+.table-scroll {
+  overflow-x: auto;
+  border: 1px solid rgba(0,212,255,0.1);
+  border-radius: 3px;
+  position: relative;
+}
+
+.table-scroll::-webkit-scrollbar { height: 4px; }
+.table-scroll::-webkit-scrollbar-track { background: var(--bg2); }
+.table-scroll::-webkit-scrollbar-thumb { background: rgba(0,212,255,0.3); border-radius: 2px; }
 
 table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12px;
-  white-space: nowrap;
-  min-width: 1000px;
-}
-
-thead tr { background: rgba(255,255,255,0.05); }
-thead th {
-  padding: 10px 12px;
-  text-align: left;
-  font-weight: 600;
-  color: var(--muted);
   font-size: 11px;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  border-bottom: 1px solid var(--border);
   white-space: nowrap;
+  min-width: 1100px;
 }
-thead th:first-child { width: 40px; text-align: center; color: var(--muted); }
 
-tbody tr { border-bottom: 1px solid var(--border); transition: background 0.1s; }
+thead tr { background: rgba(0,212,255,0.05); }
+
+thead th {
+  padding: 11px 13px;
+  text-align: left;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 10px;
+  color: var(--glow);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  border-bottom: 1px solid rgba(0,212,255,0.15);
+  white-space: nowrap;
+  font-weight: 400;
+}
+
+thead th:first-child {
+  width: 44px;
+  text-align: center;
+  color: var(--text2);
+}
+
+tbody tr {
+  border-bottom: 1px solid rgba(0,212,255,0.05);
+  transition: background 0.15s;
+}
 tbody tr:last-child { border-bottom: none; }
-tbody tr:hover { background: rgba(255,255,255,0.03); }
+tbody tr:hover { background: rgba(0,212,255,0.04); }
 
 tbody td {
-  padding: 10px 12px;
+  padding: 9px 13px;
   color: var(--text);
   vertical-align: middle;
 }
-tbody td:first-child { text-align: center; color: var(--muted); font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+
+tbody td:first-child {
+  text-align: center;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 10px;
+  color: var(--text2);
+}
 
 .td-edit {
   outline: none;
   background: transparent;
   border: 1px solid transparent;
   color: var(--text);
-  font-family: 'Inter', sans-serif;
-  font-size: 12px;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 11px;
   padding: 3px 6px;
-  border-radius: 4px;
+  border-radius: 2px;
   min-width: 80px;
   max-width: 200px;
   width: 100%;
-  transition: border-color 0.15s;
+  transition: all 0.15s;
 }
-.td-edit:focus { border-color: var(--accent); background: rgba(59,130,246,0.06); outline: none; }
-.td-edit.amount { font-family: 'JetBrains Mono', monospace; color: var(--green); text-align: right; }
-.td-edit.date-field { font-family: 'JetBrains Mono', monospace; color: var(--yellow); }
-.td-edit.isp-field { color: var(--purple); }
+
+.td-edit:focus {
+  border-color: rgba(0,212,255,0.4);
+  background: rgba(0,212,255,0.05);
+  outline: none;
+  box-shadow: 0 0 8px rgba(0,212,255,0.15);
+  color: #fff;
+}
+
+.td-edit.amount {
+  color: var(--glow2);
+  text-align: right;
+  text-shadow: 0 0 8px rgba(0,255,157,0.3);
+}
+
+.td-edit.date-field {
+  color: #ffcc44;
+  text-shadow: 0 0 6px rgba(255,204,68,0.3);
+}
+
+.td-edit.isp-field {
+  color: #cc88ff;
+  text-shadow: 0 0 6px rgba(180,0,255,0.3);
+}
 
 .row-del {
   background: none;
-  border: none;
-  color: var(--muted);
+  border: 1px solid rgba(255,45,85,0.15);
+  color: rgba(255,45,85,0.4);
   cursor: pointer;
   padding: 4px 8px;
-  border-radius: 4px;
-  font-size: 14px;
-  transition: all 0.12s;
+  border-radius: 2px;
+  font-size: 12px;
+  font-family: 'Share Tech Mono', monospace;
+  transition: all 0.15s;
 }
-.row-del:hover { color: var(--red); background: var(--red-dim); }
+.row-del:hover { color: var(--red); background: var(--red-dim); border-color: var(--red); box-shadow: 0 0 8px rgba(255,45,85,0.2); }
 
-/* ── Empty hint ── */
+/* ── EMPTY HINT ── */
 .empty-hint {
   text-align: center;
-  padding: 40px;
-  color: var(--muted);
-  font-size: 13px;
+  padding: 48px;
+  color: var(--text2);
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 12px;
+  letter-spacing: 0.05em;
 }
 
-/* ── Toast ── */
+/* ── CORNER DECORATIONS ── */
+.corner-dec {
+  position: absolute;
+  width: 16px; height: 16px;
+  pointer-events: none;
+}
+.corner-dec.tl { top: 8px; left: 8px; border-top: 1px solid var(--glow); border-left: 1px solid var(--glow); opacity: 0.4; }
+.corner-dec.br { bottom: 8px; right: 8px; border-bottom: 1px solid var(--glow); border-right: 1px solid var(--glow); opacity: 0.4; }
+
+/* ── TOAST ── */
 .toast {
   position: fixed;
-  bottom: 24px; right: 24px;
-  background: #1e2535;
-  border: 1px solid var(--border2);
-  border-radius: 10px;
-  padding: 12px 18px;
-  font-size: 13px;
+  bottom: 28px; right: 28px;
+  background: var(--panel);
+  border: 1px solid rgba(0,212,255,0.2);
+  border-radius: 3px;
+  padding: 14px 20px;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 12px;
   color: var(--text);
   display: flex;
   align-items: center;
-  gap: 8px;
-  z-index: 999;
-  transform: translateY(80px);
+  gap: 10px;
+  z-index: 9999;
+  transform: translateX(120%);
   opacity: 0;
-  transition: all 0.3s;
-  max-width: 340px;
+  transition: all 0.4s cubic-bezier(0.23, 1, 0.32, 1);
+  max-width: 360px;
+  letter-spacing: 0.05em;
 }
-.toast.show { transform: translateY(0); opacity: 1; }
-.toast.ok { border-color: rgba(34,197,94,0.4); }
-.toast.err { border-color: rgba(239,68,68,0.4); }
+.toast::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--glow), transparent);
+}
+.toast.show { transform: translateX(0); opacity: 1; }
+.toast.ok  { border-color: rgba(0,255,157,0.3); }
+.toast.ok::before { background: linear-gradient(90deg, transparent, var(--glow2), transparent); }
+.toast.err { border-color: rgba(255,45,85,0.3); }
+.toast.err::before { background: linear-gradient(90deg, transparent, var(--red), transparent); }
 
-@media (max-width: 600px) {
+/* ── FOOTER INFO BAR ── */
+.info-bar {
+  margin-top: 12px;
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.info-chip {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 10px;
+  color: var(--text2);
+  letter-spacing: 0.08em;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.info-chip span { color: var(--glow2); }
+
+/* ── Animated corner for panel ── */
+.panel-corner {
+  position: absolute;
+  width: 12px; height: 12px;
+  pointer-events: none;
+  opacity: 0.5;
+}
+.panel-corner.tl { top: 0; left: 0; border-top: 2px solid var(--glow); border-left: 2px solid var(--glow); }
+.panel-corner.tr { top: 0; right: 0; border-top: 2px solid var(--glow); border-right: 2px solid var(--glow); }
+.panel-corner.bl { bottom: 0; left: 0; border-bottom: 2px solid var(--glow); border-left: 2px solid var(--glow); }
+.panel-corner.br { bottom: 0; right: 0; border-bottom: 2px solid var(--glow); border-right: 2px solid var(--glow); }
+
+/* ── Flicker animation for load ── */
+@keyframes flicker {
+  0%,19%,21%,23%,25%,54%,56%,100% { opacity: 1; }
+  20%,24%,55% { opacity: 0.6; }
+}
+
+.logo { animation: logoGlow 4s ease-in-out infinite alternate, flicker 8s linear 1; }
+
+@media (max-width: 640px) {
+  .logo { font-size: 22px; }
   .btn-row { flex-direction: column; }
   .btn { width: 100%; justify-content: center; }
+  .hdr-right { display: none; }
 }
 </style>
 </head>
 <body>
+<div class="scanlines"></div>
+
 <div class="wrap">
 
-  <!-- Header -->
+  <!-- ── HEADER ── -->
   <div class="hdr">
-    <div class="hdr-left">
-      <h1>📄 Invoice → Excel Extractor</h1>
-      <p>Upload one or multiple invoice PDFs → auto-extract → download as Excel</p>
+    <div class="logo-block">
+      <div class="logo">INVOX</div>
+      <div class="logo-sub">Neural Invoice <span>Extraction System</span> // v3.0</div>
     </div>
-    <span class="badge-free">✓ 100% FREE · No server</span>
-  </div>
-
-  <!-- Upload card -->
-  <div class="card">
-    <div class="drop-zone" id="dropZone">
-      <input type="file" id="fileInput" accept=".pdf" multiple />
-      <span class="drop-icon">🗂️</span>
-      <div class="drop-title">Drop invoice PDFs here</div>
-      <div class="drop-hint">
-        or <b>click to browse</b> · Select multiple files at once<br>
-        Works with any GST / tax / service invoice · Runs entirely in your browser
+    <div class="hdr-right">
+      <div class="status-cluster">
+        <div class="status-pill pill-online"><div class="dot"></div> SYSTEM ONLINE</div>
+        <div class="status-pill pill-secure"><div class="dot"></div> SECURE</div>
+        <div class="status-pill pill-local"><div class="dot"></div> LOCAL ONLY</div>
       </div>
-    </div>
-
-    <!-- Queue -->
-    <div id="queueWrap" style="display:none; margin-top:16px;">
-      <div class="queue-header">
-        <span class="queue-label">Files Queued</span>
-        <span class="queue-count" id="queueCount">0</span>
-      </div>
-      <div class="queue-list" id="queueList"></div>
-    </div>
-
-    <!-- Progress -->
-    <div class="progress-wrap" id="progressWrap">
-      <div class="progress-label" id="progressLabel">Processing…</div>
-      <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
-    </div>
-
-    <!-- Buttons -->
-    <div class="btn-row">
-      <button class="btn btn-primary" id="extractBtn" disabled>⚡ Extract All</button>
-      <button class="btn btn-success" id="downloadBtn" disabled>⬇ Download Excel</button>
-      <button class="btn btn-ghost" id="clearAllBtn" style="display:none">🗑 Clear All</button>
-    </div>
-    <div style="margin-top:8px; font-size:11px; color:var(--muted); font-family:'JetBrains Mono',monospace;">
-      ✓ FREE &nbsp;·&nbsp; No API key &nbsp;·&nbsp; No signup &nbsp;·&nbsp; Everything runs in your browser
     </div>
   </div>
 
-  <!-- Preview table -->
-  <div class="card preview-card" id="previewCard">
-    <div class="preview-topbar">
-      <div class="preview-title">
-        Extracted Data
-        <span id="rowCount">0 rows</span>
+  <!-- ── UPLOAD PANEL ── -->
+  <div class="panel">
+    <div class="panel-corner tl"></div>
+    <div class="panel-corner tr"></div>
+    <div class="panel-corner bl"></div>
+    <div class="panel-corner br"></div>
+    <div class="panel-header">
+      <div class="panel-icon">📡</div>
+      <div class="panel-title">Input Feed // PDF Upload</div>
+      <div class="panel-badge">● READY</div>
+    </div>
+    <div class="panel-body">
+
+      <div class="drop-zone" id="dropZone">
+        <input type="file" id="fileInput" accept=".pdf" multiple />
+        <div class="drop-zone-inner">
+          <div class="drop-icon-wrap">
+            <div class="drop-hex">⬡</div>
+          </div>
+          <div class="drop-title">INITIALIZE FILE TRANSFER</div>
+          <div class="drop-hint">
+            DROP PDF INVOICES HERE &nbsp;//&nbsp; <span class="hl">CLICK TO BROWSE</span><br>
+            SUPPORTS MULTIPLE FILES &nbsp;·&nbsp; <span class="hl2">RUNS 100% IN-BROWSER</span> &nbsp;·&nbsp; ZERO DATA TRANSMITTED
+          </div>
+        </div>
       </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-        <span style="font-size:11px;color:var(--muted);">✏️ Click any cell to edit</span>
-        <button class="btn btn-success" id="downloadBtn2">⬇ Download Excel</button>
+
+      <!-- Queue -->
+      <div class="queue-wrap" id="queueWrap">
+        <div class="queue-hdr">
+          <div class="queue-label">// File Queue</div>
+          <div class="queue-count" id="queueCount">0</div>
+        </div>
+        <div class="queue-list" id="queueList"></div>
+      </div>
+
+      <!-- Progress -->
+      <div class="progress-wrap" id="progressWrap">
+        <div class="progress-label" id="progressLabel">Initializing neural extraction...</div>
+        <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+      </div>
+
+      <!-- Buttons -->
+      <div class="btn-row">
+        <button class="btn btn-primary" id="extractBtn" disabled>⚡ EXTRACT DATA</button>
+        <button class="btn btn-success" id="downloadBtn" disabled>↓ EXPORT EXCEL</button>
+        <button class="btn btn-ghost" id="clearAllBtn" style="display:none">✕ CLEAR ALL</button>
+      </div>
+
+      <div class="info-bar">
+        <div class="info-chip"><span>✓</span> FREE TO USE</div>
+        <div class="info-chip"><span>✓</span> NO SERVER</div>
+        <div class="info-chip"><span>✓</span> NO SIGNUP</div>
+        <div class="info-chip"><span>✓</span> PRIVATE &amp; SECURE</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── DATA PANEL ── -->
+  <div class="panel preview-card" id="previewCard">
+    <div class="panel-corner tl"></div>
+    <div class="panel-corner tr"></div>
+    <div class="panel-corner bl"></div>
+    <div class="panel-corner br"></div>
+    <div class="panel-header">
+      <div class="panel-icon">🔬</div>
+      <div class="panel-title">Extracted Data Matrix</div>
+      <div style="display:flex;gap:8px;align-items:center;margin-left:auto;">
+        <span style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text2);">✏ CLICK CELL TO EDIT</span>
+        <button class="btn btn-success" id="downloadBtn2">↓ EXPORT EXCEL</button>
       </div>
     </div>
+    <div class="panel-body">
+      <div class="preview-topbar">
+        <div class="preview-title">
+          INVOICE RECORDS
+          <span class="row-count" id="rowCount">[ 0 ENTRIES ]</span>
+        </div>
+      </div>
 
-    <div class="table-scroll">
-      <table id="dataTable">
-        <thead>
-          <tr>
-            <th>SL</th>
-            <th>ISP</th>
-            <th>Vendor Name</th>
-            <th>Relationship No</th>
-            <th>Location</th>
-            <th>Vendor GST Number</th>
-            <th>Bill No / Invoice Num</th>
-            <th>Bill Date</th>
-            <th>From Date</th>
-            <th>To Date</th>
-            <th>Due Date</th>
-            <th>Basic Amount</th>
-            <th>CGST</th>
-            <th>SGST</th>
-            <th>Invoice Amount</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody id="tableBody">
-          <tr><td colspan="16" class="empty-hint">No data yet — upload PDFs and click Extract All</td></tr>
-        </tbody>
-      </table>
+      <div class="table-scroll">
+        <table id="dataTable">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>ISP</th>
+              <th>Vendor Name</th>
+              <th>Relationship No</th>
+              <th>Location</th>
+              <th>Vendor GST</th>
+              <th>Bill No / Invoice</th>
+              <th>Bill Date</th>
+              <th>From Date</th>
+              <th>To Date</th>
+              <th>Due Date</th>
+              <th>Basic Amt</th>
+              <th>CGST</th>
+              <th>SGST</th>
+              <th>Invoice Amt</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="tableBody">
+            <tr><td colspan="16" class="empty-hint">// NO DATA LOADED &mdash; UPLOAD PDFS AND EXECUTE EXTRACTION</td></tr>
+          </tbody>
+        </table>
+      </div>
     </div>
   </div>
 
@@ -436,29 +959,27 @@ tbody td:first-child { text-align: center; color: var(--muted); font-family: 'Je
 pdfjsLib.GlobalWorkerOptions.workerSrc =
   'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
-// ── State ──
-let fileQueue = [];     // {file, id, status: 'pending'|'processing'|'done'|'error', data}
-let rows = [];          // extracted row objects
+let fileQueue = [];
+let rows = [];
 let nextId = 1;
 
-// ── DOM ──
-const dropZone    = document.getElementById('dropZone');
-const fileInput   = document.getElementById('fileInput');
-const queueWrap   = document.getElementById('queueWrap');
-const queueList   = document.getElementById('queueList');
-const queueCount  = document.getElementById('queueCount');
-const extractBtn  = document.getElementById('extractBtn');
-const downloadBtn = document.getElementById('downloadBtn');
-const downloadBtn2= document.getElementById('downloadBtn2');
-const clearAllBtn = document.getElementById('clearAllBtn');
-const progressWrap= document.getElementById('progressWrap');
-const progressLabel=document.getElementById('progressLabel');
-const progressFill= document.getElementById('progressFill');
-const previewCard = document.getElementById('previewCard');
-const tableBody   = document.getElementById('tableBody');
-const rowCountEl  = document.getElementById('rowCount');
+const dropZone     = document.getElementById('dropZone');
+const fileInput    = document.getElementById('fileInput');
+const queueWrap    = document.getElementById('queueWrap');
+const queueList    = document.getElementById('queueList');
+const queueCount   = document.getElementById('queueCount');
+const extractBtn   = document.getElementById('extractBtn');
+const downloadBtn  = document.getElementById('downloadBtn');
+const downloadBtn2 = document.getElementById('downloadBtn2');
+const clearAllBtn  = document.getElementById('clearAllBtn');
+const progressWrap = document.getElementById('progressWrap');
+const progressLabel= document.getElementById('progressLabel');
+const progressFill = document.getElementById('progressFill');
+const previewCard  = document.getElementById('previewCard');
+const tableBody    = document.getElementById('tableBody');
+const rowCountEl   = document.getElementById('rowCount');
 
-// ── Upload wiring ──
+// Upload wiring
 dropZone.addEventListener('click', () => fileInput.click());
 dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('over'); });
 dropZone.addEventListener('dragleave', () => dropZone.classList.remove('over'));
@@ -470,10 +991,8 @@ fileInput.addEventListener('change', () => { addFiles([...fileInput.files]); fil
 
 function addFiles(files) {
   const pdfs = files.filter(f => f.type === 'application/pdf' || f.name.endsWith('.pdf'));
-  if (!pdfs.length) { showToast('Please select PDF files', 'err'); return; }
-  pdfs.forEach(f => {
-    fileQueue.push({ file: f, id: nextId++, status: 'pending', data: null });
-  });
+  if (!pdfs.length) { showToast('// ERROR: SELECT PDF FILES ONLY', 'err'); return; }
+  pdfs.forEach(f => fileQueue.push({ file: f, id: nextId++, status: 'pending', data: null }));
   renderQueue();
   extractBtn.disabled = false;
   clearAllBtn.style.display = 'inline-flex';
@@ -485,24 +1004,23 @@ function renderQueue() {
   queueList.innerHTML = '';
   fileQueue.forEach(item => {
     const el = document.createElement('div');
-    el.className = 'q-item' + (item.status === 'done' ? ' done' : item.status === 'error' ? ' error' : item.status === 'processing' ? ' active' : '');
-    el.id = 'qi-' + item.id;
-    const icon = item.status === 'done' ? '✅' : item.status === 'error' ? '❌' : item.status === 'processing' ? '⏳' : '📄';
-    const statusTxt = item.status === 'done' ? 'done' : item.status === 'error' ? 'failed' : item.status === 'processing' ? 'reading…' : 'queued';
-    const statusCls = item.status === 'done' ? 'ok' : item.status === 'error' ? 'err' : 'run';
+    const s = item.status;
+    el.className = 'q-item' + (s==='done'?' done':s==='error'?' error':s==='processing'?' active':'');
+    el.id = 'qi-'+item.id;
+    const icon = s==='done'?'✓':s==='error'?'✗':s==='processing'?'◈':'◇';
+    const stxt = s==='done'?'EXTRACTED':s==='error'?'FAILED':s==='processing'?'PROCESSING...':'QUEUED';
+    const scls = s==='done'?'ok':s==='error'?'err':'run';
     el.innerHTML = `
-      <span class="q-icon">${icon}</span>
+      <span class="q-icon" style="font-family:'Share Tech Mono',monospace;font-size:14px;color:${s==='done'?'var(--glow2)':s==='error'?'var(--red)':'var(--glow)'}">${icon}</span>
       <div class="q-info">
         <div class="q-name">${item.file.name}</div>
-        <div class="q-meta">${(item.file.size/1024).toFixed(1)} KB</div>
+        <div class="q-meta">SIZE: ${(item.file.size/1024).toFixed(1)}KB</div>
       </div>
-      <span class="q-status ${statusCls}">${statusTxt}</span>
-      ${item.status === 'pending' ? `<button class="q-remove" data-id="${item.id}">✕</button>` : ''}
+      <span class="q-status ${scls}">${stxt}</span>
+      ${s==='pending'?`<button class="q-remove" data-id="${item.id}">✕</button>`:''}
     `;
     queueList.appendChild(el);
   });
-
-  // remove handlers
   queueList.querySelectorAll('.q-remove').forEach(btn => {
     btn.addEventListener('click', () => {
       const id = parseInt(btn.dataset.id);
@@ -515,8 +1033,7 @@ function renderQueue() {
 
 clearAllBtn.addEventListener('click', () => {
   fileQueue = []; rows = [];
-  renderQueue();
-  renderTable();
+  renderQueue(); renderTable();
   extractBtn.disabled = true;
   downloadBtn.disabled = true;
   previewCard.classList.remove('show');
@@ -524,52 +1041,41 @@ clearAllBtn.addEventListener('click', () => {
   progressWrap.classList.remove('show');
 });
 
-// ── Extract all ──
 extractBtn.addEventListener('click', extractAll);
 
 async function extractAll() {
   const pending = fileQueue.filter(i => i.status === 'pending');
-  if (!pending.length) { showToast('No pending files to process', 'err'); return; }
-
+  if (!pending.length) { showToast('// NO PENDING FILES IN QUEUE', 'err'); return; }
   extractBtn.disabled = true;
   progressWrap.classList.add('show');
-
   for (let i = 0; i < pending.length; i++) {
     const item = pending[i];
-    item.status = 'processing';
-    renderQueue();
-    progressLabel.textContent = `Processing ${i+1} of ${pending.length}: ${item.file.name}`;
+    item.status = 'processing'; renderQueue();
+    progressLabel.textContent = `PROCESSING FILE ${i+1}/${pending.length}: ${item.file.name}`;
     progressFill.style.width = ((i / pending.length) * 100) + '%';
-
     try {
       const text = await extractPDFText(item.file);
       const data = parseInvoice(text, rows.length + 1);
-      item.data = data;
-      item.status = 'done';
+      item.data = data; item.status = 'done';
       rows.push(data);
     } catch(e) {
-      item.status = 'error';
-      console.error(e);
+      item.status = 'error'; console.error(e);
     }
     renderQueue();
   }
-
   progressFill.style.width = '100%';
-  progressLabel.textContent = `Done — ${rows.length} invoice(s) extracted`;
+  progressLabel.textContent = `EXTRACTION COMPLETE — ${rows.length} INVOICE(S) PROCESSED`;
   setTimeout(() => progressWrap.classList.remove('show'), 2500);
-
   extractBtn.disabled = false;
   if (rows.length) {
     downloadBtn.disabled = false;
     previewCard.classList.add('show');
     renderTable();
-    showToast(`✅ ${rows.length} invoice(s) extracted successfully`, 'ok');
-    // auto-download
+    showToast(`✓ ${rows.length} INVOICE(S) EXTRACTED SUCCESSFULLY`, 'ok');
     downloadExcel();
   }
 }
 
-// ── PDF text extraction ──
 async function extractPDFText(file) {
   const buf = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
@@ -577,7 +1083,6 @@ async function extractPDFText(file) {
   for (let p = 1; p <= pdf.numPages; p++) {
     const page = await pdf.getPage(p);
     const content = await page.getTextContent();
-    // Group by Y position to reconstruct lines
     const lineMap = {};
     for (const item of content.items) {
       if (!item.str) continue;
@@ -595,7 +1100,6 @@ async function extractPDFText(file) {
   return out;
 }
 
-// ── Helpers ──
 function grab(text, ...patterns) {
   for (const p of patterns) {
     const m = text.match(p);
@@ -604,24 +1108,13 @@ function grab(text, ...patterns) {
   return '';
 }
 
-function grabAll(text, pattern) {
-  return [...text.matchAll(new RegExp(pattern, 'gi'))].map(m => (m[1] || m[0]).trim());
-}
-
-// Parse date to DD/MM/YYYY string
 function parseDate(raw) {
   if (!raw) return '';
   raw = raw.trim();
-
-  // Already DD/MM/YYYY (with optional single digit)
   let m = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (m) return `${m[1].padStart(2,'0')}/${m[2].padStart(2,'0')}/${m[3]}`;
-
-  // ISO: 2026-01-05
   m = raw.match(/(\d{4})-(\d{2})-(\d{2})/);
   if (m) return `${m[3]}/${m[2]}/${m[1]}`;
-
-  // "1st Feb 2026" / "30th Apr 2026" / "05 January 2026" / "14 Jan 2026"
   m = raw.match(/(\d{1,2})(?:st|nd|rd|th)?\s+([A-Za-z]+)\s+(\d{4})/);
   if (m) {
     const months = { jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12,
@@ -629,201 +1122,96 @@ function parseDate(raw) {
     const mo = months[m[2].toLowerCase().slice(0,3)];
     if (mo) return `${m[1].padStart(2,'0')}/${String(mo).padStart(2,'0')}/${m[3]}`;
   }
-
   return raw;
 }
 
-// ── Main invoice parser → maps to exact columns ──
 function parseInvoice(t, slNum) {
   const tLow = t.toLowerCase();
+  const isSSCable  = /SS\s*CABLE\s*AND\s*BROADBAND/i.test(t);
+  const isMeghbela = /MEGHBELA\s*CABLE\s*&\s*BROADBAND/i.test(t);
+  const isSharktel = /SHARKTEL\s*INFOCOM/i.test(t);
 
-  // ─ Detect invoice format ─
-  const isSSCable    = /SS\s*CABLE\s*AND\s*BROADBAND/i.test(t);
-  const isMeghbela   = /MEGHBELA\s*CABLE\s*&\s*BROADBAND/i.test(t);
-  const isSharktel   = /SHARKTEL\s*INFOCOM/i.test(t);
-
-  // ─ Vendor Name ─
   let vendorName = '';
-  if (isSSCable) {
-    vendorName = 'SS CABLE AND BROADBAND SERVICE';
-  } else if (isMeghbela) {
-    vendorName = 'MEGHBELA CABLE & BROADBAND SERVICES PVT. LTD.';
-  } else if (isSharktel) {
-    vendorName = 'SHARKTEL INFOCOM PRIVATE LIMITED';
-  } else {
-    // Generic fallback: try to find company name at top of invoice
-    vendorName = grab(t,
-      /^([A-Z][A-Z\s&.]+(?:PRIVATE\s+LIMITED|LIMITED|LTD\.?|PVT\.?\s*LTD\.?))/m,
-      /Invoice\s*From[\s\S]{0,80}?([A-Z][A-Z\s&]+(?:PRIVATE\s+LIMITED|LIMITED|LTD|PVT\.?\s*LTD\.?))/i
-    ) || grab(t, /([A-Z]{2}[A-Z\s&]{5,60}(?:LIMITED|LTD|PVT))/i);
-  }
+  if (isSSCable)    vendorName = 'SS CABLE AND BROADBAND SERVICE';
+  else if (isMeghbela) vendorName = 'MEGHBELA CABLE & BROADBAND SERVICES PVT. LTD.';
+  else if (isSharktel) vendorName = 'SHARKTEL INFOCOM PRIVATE LIMITED';
+  else vendorName = grab(t, /^([A-Z][A-Z\s&.]+(?:PRIVATE\s+LIMITED|LIMITED|LTD\.?|PVT\.?\s*LTD\.?))/m) || grab(t, /([A-Z]{2}[A-Z\s&]{5,60}(?:LIMITED|LTD|PVT))/i);
 
-  // ─ ISP label ─
   let ispLabel = 'ISP';
-  if (tLow.includes('electricity') || tLow.includes('power') || tLow.includes('wbsedcl')) ispLabel = 'Electricity';
+  if (tLow.includes('electricity') || tLow.includes('wbsedcl')) ispLabel = 'Electricity';
   else if (tLow.includes('aws') || tLow.includes('azure') || tLow.includes('cloud')) ispLabel = 'Cloud';
   else if (tLow.includes('mobile') || tLow.includes('postpaid')) ispLabel = 'Mobile';
 
-  // ─ Relationship No (Circuit ID) ─
   let relNo = '';
-  if (isSSCable || isSharktel) {
-    // Format: "Circuit ID - 22526080004" or "Circuit ID - 25020005"
-    relNo = grab(t,
-      /Circuit\s*ID\s*[-:]\s*([\w\d]+)/i,
-      /Circuit\s*[Ii][Dd][:\s]+([\w\d]+)/
-    );
-  } else if (isMeghbela) {
-    // Format: "Circuit ID : 20005858"
-    relNo = grab(t,
-      /Circuit\s*ID\s*[:\s]+([\d]+)/i
-    );
-  }
-  if (!relNo) {
-    relNo = grab(t,
-      /Circuit\s*[Ii][Dd][:\s-]+([\w\d]+)/,
-      /Relationship\s*No[.:\s]+(\d+)/i,
-      /Consumer\s*No[.:\s]*([\w\d]+)/i,
-      /Customer\s*(?:No|ID)[.:\s]*([\w\d]+)/i
-    );
-  }
+  if (isSSCable || isSharktel) relNo = grab(t, /Circuit\s*ID\s*[-:]\s*([\w\d]+)/i, /Circuit\s*[Ii][Dd][:\s]+([\w\d]+)/);
+  else if (isMeghbela) relNo = grab(t, /Circuit\s*ID\s*[:\s]+([\d]+)/i);
+  if (!relNo) relNo = grab(t, /Circuit\s*[Ii][Dd][:\s-]+([\w\d]+)/, /Relationship\s*No[.:\s]+(\d+)/i, /Consumer\s*No[.:\s]*([\w\d]+)/i);
 
-  // ─ Location ─ Extract from description/consignee address
   let location = '';
   if (isMeghbela) {
-    // "Location A : T1 IBBN DSKOL023 Kolkata Serampore"
     const locAM = t.match(/Location\s*A\s*[:\s]+(.+?)(?:\n|Location\s*B)/i);
     if (locAM) {
-      // Extract city hint from Location A
       const locWords = locAM[1].replace(/[\r\n]+/g,' ').trim();
-      // Try to get meaningful place name (last word that looks like a city)
-      const cityM = locWords.match(/\b(Kolkata|Serampore|Howrah|Hooghly|Barasat|Dum\s*Dum|Salt\s*Lake|Rajarhat|Baranagar|Nazirabad|Karimpur)\b/i);
+      const cityM = locWords.match(/\b(Kolkata|Serampore|Howrah|Hooghly|Barasat|Salt\s*Lake|Rajarhat|Baranagar|Nazirabad|Karimpur)\b/i);
       location = cityM ? cityM[1] : locWords.split(/\s+/).slice(-1)[0];
     }
-    if (!location) {
-      const locBM = t.match(/Location\s*B\s*[:\s]+([\s\S]{0,200})/i);
-      if (locBM) {
-        const cityM2 = locBM[1].match(/\b(Serampore|Kolkata|Howrah|Hooghly|Barasat|Dum\s*Dum|Salt\s*Lake|Rajarhat|Baranagar)\b/i);
-        location = cityM2 ? cityM2[1] : '';
-      }
-    }
   } else if (isSSCable || isSharktel) {
-    // Extract from description line — look for location hints
     const descM = t.match(/Location\s*[:\-]\s*([A-Za-z][A-Za-z\s]+?)(?:\n|PO|Circuit|Period|From|Quarterly)/i);
     if (descM) location = descM[1].trim().replace(/\s+/g,' ');
-    // Also try "IBBN" hub location
     if (!location) {
       const ibbM = t.match(/(?:IBBN|Hub)\s*[:\(]?\s*([A-Za-z][A-Za-z\s]{2,30}?)(?:\s*Hub|\s*Location|\s*\)|\n)/i);
       if (ibbM) location = ibbM[1].trim();
     }
   }
   if (!location) {
-    // Generic fallback: city from bill-to address
-    const cityMatch = t.match(/\b(Kolkata|Mumbai|Delhi|Bangalore|Chennai|Hyderabad|Pune|Ahmedabad|Surat|Jaipur|Serampore|Hooghly|Rajarhat|Baranagar|Gobardanga)\b/i);
+    const cityMatch = t.match(/\b(Kolkata|Mumbai|Delhi|Bangalore|Chennai|Serampore|Rajarhat|Baranagar|Gobardanga)\b/i);
     location = cityMatch ? cityMatch[1] : '';
   }
 
-  // ─ Vendor GST ─
-  // All GSTINs in doc
   const allGSTINs = [...t.matchAll(/\b([0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][A-Z0-9]Z[A-Z0-9])\b/g)].map(m => m[1]);
-  // Buyer GSTIN we know: 19AACCI2053A1Z4 (Innovative Retail)
   const buyerGSTIN = '19AACCI2053A1Z4';
   let vendorGST = '';
+  if (isSSCable)    vendorGST = grab(t, /GSTIN[:\s]+(19FSPPS3961A1Z9)/i) || '19FSPPS3961A1Z9';
+  else if (isMeghbela) vendorGST = grab(t, /Supplier\s*GSTIN[:\s]+([\w]+)/i) || '19AAECM6600R1ZY';
+  else if (isSharktel) vendorGST = grab(t, /GSTIN[:\s]+(19AAWCS5449J1ZD)/i) || '19AAWCS5449J1ZD';
+  else vendorGST = allGSTINs.find(g => g !== buyerGSTIN) || allGSTINs[0] || '';
 
-  if (isSSCable) {
-    // Supplier GSTIN explicitly labeled
-    vendorGST = grab(t, /GSTIN[:\s]+(19FSPPS3961A1Z9)/i) || '19FSPPS3961A1Z9';
-  } else if (isMeghbela) {
-    vendorGST = grab(t, /Supplier\s*GSTIN[:\s]+([\w]+)/i) || '19AAECM6600R1ZY';
-  } else if (isSharktel) {
-    vendorGST = grab(t, /GSTIN[:\s]+(19AAWCS5449J1ZD)/i) || '19AAWCS5449J1ZD';
-  } else {
-    // Pick GSTIN that is NOT the buyer's
-    vendorGST = allGSTINs.find(g => g !== buyerGSTIN) || allGSTINs[0] || '';
-  }
-
-  // ─ Bill / Invoice Number ─
   let billNo = '';
-  if (isSSCable) {
-    billNo = grab(t, /#\s*[:\s]*(SS-\d{4}-\d+)/i, /Invoice\s*#?\s*[:\s]*(SS-[\w\-]+)/i);
-    if (!billNo) billNo = grab(t, /\b(SS-\d{4}-\d{4,})\b/);
-  } else if (isMeghbela) {
-    billNo = grab(t, /Document\s*No\s*[:\s]+(C\/[A-Za-z\/\d\-]+)/i);
-    if (!billNo) billNo = grab(t, /\b(C\/\w+\/\d{2}-\d{2}\/\d+)\b/);
-  } else if (isSharktel) {
-    billNo = grab(t, /Invoice\s*#?\s*[:\s]*(SIPL-[\w\-]+)/i);
-    if (!billNo) billNo = grab(t, /\b(SIPL-\d{4}-\d{4,})\b/);
-  } else {
-    billNo = grab(t,
-      /Invoice\s*(?:#|No|Number)[.:\s]+([A-Z0-9\/\-]+)/i,
-      /Bill\s*No[.:\s]+([A-Z0-9\/\-]+)/i,
-      /Document\s*No[.:\s]+([A-Z0-9\/\-]+)/i,
-      /\b(SB\d{2}[A-Z]{2}\d{9,})\b/
-    );
-  }
+  if (isSSCable) { billNo = grab(t, /#\s*[:\s]*(SS-\d{4}-\d+)/i, /Invoice\s*#?\s*[:\s]*(SS-[\w\-]+)/i); if (!billNo) billNo = grab(t, /\b(SS-\d{4}-\d{4,})\b/); }
+  else if (isMeghbela) { billNo = grab(t, /Document\s*No\s*[:\s]+(C\/[A-Za-z\/\d\-]+)/i); if (!billNo) billNo = grab(t, /\b(C\/\w+\/\d{2}-\d{2}\/\d+)\b/); }
+  else if (isSharktel) { billNo = grab(t, /Invoice\s*#?\s*[:\s]*(SIPL-[\w\-]+)/i); if (!billNo) billNo = grab(t, /\b(SIPL-\d{4}-\d{4,})\b/); }
+  else billNo = grab(t, /Invoice\s*(?:#|No|Number)[.:\s]+([A-Z0-9\/\-]+)/i, /Bill\s*No[.:\s]+([A-Z0-9\/\-]+)/i, /Document\s*No[.:\s]+([A-Z0-9\/\-]+)/i);
 
-  // ─ Bill Date ─
   let billDateRaw = '';
-  if (isSSCable || isSharktel) {
-    // "Invoice Date : 25/03/2026"
-    billDateRaw = grab(t,
-      /Invoice\s*Date\s*[:\s]+(\d{2}\/\d{2}\/\d{4})/i
-    );
-  } else if (isMeghbela) {
-    // "Document Date : 02/02/2026"
-    billDateRaw = grab(t,
-      /Document\s*Date\s*[:\s]+(\d{4}-\d{2}-\d{2})/i,
-      /Document\s*Date\s*[:\s]+(\d{2}\/\d{2}\/\d{4})/i
-    );
-  } else {
-    billDateRaw = grab(t,
-      /(?:Billing|Invoice|Bill)\s*Date[:\s]+(\d{1,2}\s+\w+\s+\d{4}|\d{2}\/\d{2}\/\d{4}|\d{4}-\d{2}-\d{2})/i
-    );
-  }
+  if (isSSCable || isSharktel) billDateRaw = grab(t, /Invoice\s*Date\s*[:\s]+(\d{2}\/\d{2}\/\d{4})/i);
+  else if (isMeghbela) billDateRaw = grab(t, /Document\s*Date\s*[:\s]+(\d{4}-\d{2}-\d{2})/i, /Document\s*Date\s*[:\s]+(\d{2}\/\d{2}\/\d{4})/i);
+  else billDateRaw = grab(t, /(?:Billing|Invoice|Bill)\s*Date[:\s]+(\d{1,2}\s+\w+\s+\d{4}|\d{2}\/\d{2}\/\d{4}|\d{4}-\d{2}-\d{2})/i);
 
-  // ─ Period (From/To dates) ─
   let fromDateRaw = '', toDateRaw = '';
-
   if (isSSCable) {
-    // "Period - 1/02/2026 to 30/04/2026" (may be split across lines as "30/04 /2026")
-    const periodM = t.match(/Period\s*[-:]\s*([\d\/]+(?:\s*\/\s*\d+)?)\s+to\s+([\d\/\s]+\d{4})/i);
-    if (periodM) {
-      fromDateRaw = periodM[1].replace(/\s/g,'');
-      toDateRaw   = periodM[2].replace(/\s/g,'');
-    }
+    const pm = t.match(/Period\s*[-:]\s*([\d\/]+(?:\s*\/\s*\d+)?)\s+to\s+([\d\/\s]+\d{4})/i);
+    if (pm) { fromDateRaw = pm[1].replace(/\s/g,''); toDateRaw = pm[2].replace(/\s/g,''); }
   } else if (isMeghbela) {
-    // "Period from and To : 1st Feb 2026 to 30th Apr 2026"
-    const periodM = t.match(/Period\s+from\s+and\s+To\s*[:\s]+([\w\s]+?)\s+to\s+([\w\s]+?)(?:\n|Circuit)/i);
-    if (periodM) { fromDateRaw = periodM[1].trim(); toDateRaw = periodM[2].trim(); }
+    const pm = t.match(/Period\s+from\s+and\s+To\s*[:\s]+([\w\s]+?)\s+to\s+([\w\s]+?)(?:\n|Circuit)/i);
+    if (pm) { fromDateRaw = pm[1].trim(); toDateRaw = pm[2].trim(); }
   } else if (isSharktel) {
-    // "From 27/01/2026 to 30/4/2026"
-    const periodM = t.match(/From\s+(\d{1,2}\/\d{1,2}\/\d{4})\s+to\s+(\d{1,2}\/\d{1,2}\/\d{4})/i);
-    if (periodM) { fromDateRaw = periodM[1]; toDateRaw = periodM[2]; }
+    const pm = t.match(/From\s+(\d{1,2}\/\d{1,2}\/\d{4})\s+to\s+(\d{1,2}\/\d{1,2}\/\d{4})/i);
+    if (pm) { fromDateRaw = pm[1]; toDateRaw = pm[2]; }
   } else {
-    const periodM = t.match(/(\d{1,2}\s+\w+\s+\d{4})\s+to\s+(\d{1,2}\s+\w+\s+\d{4})/i);
-    if (periodM) { fromDateRaw = periodM[1]; toDateRaw = periodM[2]; }
-    else {
-      fromDateRaw = grab(t, /From\s+Date[:\s]+(\d{1,2}\s+\w+\s+\d{4})/i);
-      toDateRaw   = grab(t, /To\s+Date[:\s]+(\d{1,2}\s+\w+\s+\d{4})/i);
-    }
+    const pm = t.match(/(\d{1,2}\s+\w+\s+\d{4})\s+to\s+(\d{1,2}\s+\w+\s+\d{4})/i);
+    if (pm) { fromDateRaw = pm[1]; toDateRaw = pm[2]; }
   }
 
-  // ─ Due Date ─
   let dueRaw = grab(t, /Due\s*Date\s*[:\s]+(\d{1,2}\/\d{1,2}\/\d{4}|\d{4}-\d{2}-\d{2}|\d{1,2}\s+\w+\s+\d{4}|Immediate|Due\s+on\s+Receipt)/i);
-  // "Due on Receipt" → use bill date
   if (!dueRaw || /due\s+on\s+receipt/i.test(dueRaw)) dueRaw = billDateRaw;
 
-  // ─ Amounts ─
   let basicAmt = '', cgst = '', sgst = '', invoiceAmt = '';
-
   if (isSSCable || isSharktel) {
-    // Sub Total line
-    basicAmt  = grab(t, /Sub\s*Total\s+([\d,]+\.?\d*)/i);
-    cgst      = grab(t, /CGST[\w\s()%]+?([\d,]+\.\d{2})(?!\s*%)/i);
-    sgst      = grab(t, /SGST[\w\s()%]+?([\d,]+\.\d{2})(?!\s*%)/i);
-    invoiceAmt = grab(t, /Total\s+[₹]?([\d,]+\.\d{2})\s*$/m, /Balance\s*Due\s+[₹]?([\d,]+\.\d{2})/i);
-    // Better: grab the ₹ Total line
+    basicAmt   = grab(t, /Sub\s*Total\s+([\d,]+\.?\d*)/i);
+    cgst       = grab(t, /CGST[\w\s()%]+?([\d,]+\.\d{2})(?!\s*%)/i);
+    sgst       = grab(t, /SGST[\w\s()%]+?([\d,]+\.\d{2})(?!\s*%)/i);
     const totalM = t.match(/\bTotal\b\s+₹([\d,]+\.\d{2})/);
-    if (totalM) invoiceAmt = totalM[1];
+    invoiceAmt = totalM ? totalM[1] : grab(t, /Balance\s*Due\s+[₹]?([\d,]+\.\d{2})/i);
   } else if (isMeghbela) {
     basicAmt   = grab(t, /Assessable\s*Value\s+([\d,]+\.?\d*)/i, /Taxable\s*Value\s+([\d,]+\.?\d*)/i);
     cgst       = grab(t, /CGST\s+[₹]?([\d,]+\.\d{2})/i);
@@ -833,33 +1221,23 @@ function parseInvoice(t, slNum) {
     basicAmt   = grab(t, /Sub[\s-]?Total[^0-9]*([\d,]+(?:\.\d{2})?)/i, /Taxable\s*Value[^0-9]*([\d,]+(?:\.\d{2})?)/i);
     cgst       = grab(t, /CGST[^0-9%]*([\d,]+\.\d{2})/i);
     sgst       = grab(t, /SGST[^0-9%]*([\d,]+\.\d{2})/i);
-    invoiceAmt = grab(t, /Total\s+Invoice\s+Value[^0-9]*([\d,]+\.\d{2})/i,
-                        /Grand\s*Total[^0-9]*([\d,]+\.\d{2})/i,
-                        /Net\s*Payable[^0-9]*([\d,]+\.\d{2})/i,
-                        /INVOICE\s*AMOUNT[^0-9]*([\d,]+\.\d{2})/i);
+    invoiceAmt = grab(t, /Total\s+Invoice\s+Value[^0-9]*([\d,]+\.\d{2})/i, /Grand\s*Total[^0-9]*([\d,]+\.\d{2})/i, /Net\s*Payable[^0-9]*([\d,]+\.\d{2})/i);
   }
 
   return {
-    sl:          slNum,
-    isp:         ispLabel,
-    vendorName:  vendorName,
-    relNo:       relNo,
-    location:    location,
-    vendorGST:   vendorGST,
-    billNo:      billNo,
-    billDate:    parseDate(billDateRaw),
-    fromDate:    parseDate(fromDateRaw),
-    toDate:      parseDate(toDateRaw),
-    dueDate:     parseDate(dueRaw),
-    basicAmt:    (basicAmt  || '').replace(/,/g,''),
-    cgst:        (cgst      || '').replace(/,/g,''),
-    sgst:        (sgst      || '').replace(/,/g,''),
-    invoiceAmt:  (invoiceAmt|| '').replace(/,/g,'')
+    sl: slNum, isp: ispLabel, vendorName, relNo, location, vendorGST, billNo,
+    billDate:   parseDate(billDateRaw),
+    fromDate:   parseDate(fromDateRaw),
+    toDate:     parseDate(toDateRaw),
+    dueDate:    parseDate(dueRaw),
+    basicAmt:   (basicAmt   ||'').replace(/,/g,''),
+    cgst:       (cgst       ||'').replace(/,/g,''),
+    sgst:       (sgst       ||'').replace(/,/g,''),
+    invoiceAmt: (invoiceAmt ||'').replace(/,/g,'')
   };
 }
 
-// ── Render table ──
-const COLS = ['isp','vendorName','relNo','location','vendorGST','billNo','billDate','fromDate','toDate','dueDate','basicAmt','cgst','sgst','invoiceAmt'];
+const COLS     = ['isp','vendorName','relNo','location','vendorGST','billNo','billDate','fromDate','toDate','dueDate','basicAmt','cgst','sgst','invoiceAmt'];
 const AMT_COLS  = new Set(['basicAmt','cgst','sgst','invoiceAmt']);
 const DATE_COLS = new Set(['billDate','fromDate','toDate','dueDate']);
 const ISP_COLS  = new Set(['isp']);
@@ -867,103 +1245,71 @@ const ISP_COLS  = new Set(['isp']);
 function renderTable() {
   tableBody.innerHTML = '';
   if (!rows.length) {
-    tableBody.innerHTML = '<tr><td colspan="16" class="empty-hint">No data yet — upload PDFs and click Extract All</td></tr>';
-    rowCountEl.textContent = '0 rows';
+    tableBody.innerHTML = '<tr><td colspan="16" class="empty-hint">// NO DATA LOADED — UPLOAD PDFS AND EXECUTE EXTRACTION</td></tr>';
+    rowCountEl.textContent = '[ 0 ENTRIES ]';
     return;
   }
-  rowCountEl.textContent = rows.length + ' row' + (rows.length > 1 ? 's' : '');
-
+  rowCountEl.textContent = `[ ${rows.length} ${rows.length===1?'ENTRY':'ENTRIES'} ]`;
   rows.forEach((row, idx) => {
     const tr = document.createElement('tr');
     let html = `<td>${row.sl}</td>`;
     for (const col of COLS) {
-      const cls = AMT_COLS.has(col) ? ' amount' : DATE_COLS.has(col) ? ' date-field' : ISP_COLS.has(col) ? ' isp-field' : '';
+      const cls = AMT_COLS.has(col)?' amount':DATE_COLS.has(col)?' date-field':ISP_COLS.has(col)?' isp-field':'';
       html += `<td><input class="td-edit${cls}" data-row="${idx}" data-col="${col}" value="${escVal(row[col])}" /></td>`;
     }
-    html += `<td><button class="row-del" data-idx="${idx}" title="Remove row">🗑</button></td>`;
+    html += `<td><button class="row-del" data-idx="${idx}" title="REMOVE">✕</button></td>`;
     tr.innerHTML = html;
     tableBody.appendChild(tr);
   });
-
-  // Wire cell edits
   tableBody.querySelectorAll('.td-edit').forEach(inp => {
-    inp.addEventListener('change', () => {
-      const r = parseInt(inp.dataset.row);
-      const c = inp.dataset.col;
-      rows[r][c] = inp.value;
-    });
+    inp.addEventListener('change', () => { rows[parseInt(inp.dataset.row)][inp.dataset.col] = inp.value; });
   });
-
-  // Wire delete
   tableBody.querySelectorAll('.row-del').forEach(btn => {
     btn.addEventListener('click', () => {
-      const idx = parseInt(btn.dataset.idx);
-      rows.splice(idx, 1);
-      rows.forEach((r, i) => r.sl = i + 1);
+      rows.splice(parseInt(btn.dataset.idx), 1);
+      rows.forEach((r,i) => r.sl = i+1);
       renderTable();
     });
   });
 }
 
-function escVal(v) {
-  return String(v || '').replace(/"/g, '&quot;').replace(/</g, '&lt;');
-}
+function escVal(v) { return String(v||'').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
 
-// ── Download Excel ──
 function downloadExcel() {
-  if (!rows.length) { showToast('Nothing to download yet', 'err'); return; }
-
+  if (!rows.length) { showToast('// ERROR: NO DATA TO EXPORT', 'err'); return; }
   const headers = ['SL','ISP','Vendor Name','Relationship No','Location','Vendor GST Number',
                    'Bill No/Invoice num','Bill Date','From Date','To Date','Due Date',
                    'Basic Amount','CGST','SGST','Invoice Amount'];
-
   const data = [headers, ...rows.map(r => [
     r.sl, r.isp, r.vendorName, r.relNo, r.location, r.vendorGST,
     r.billNo, r.billDate, r.fromDate, r.toDate, r.dueDate,
-    r.basicAmt ? parseFloat(r.basicAmt) || r.basicAmt : '',
-    r.cgst     ? parseFloat(r.cgst)     || r.cgst     : '',
-    r.sgst     ? parseFloat(r.sgst)     || r.sgst     : '',
+    r.basicAmt   ? parseFloat(r.basicAmt)   || r.basicAmt   : '',
+    r.cgst       ? parseFloat(r.cgst)       || r.cgst       : '',
+    r.sgst       ? parseFloat(r.sgst)       || r.sgst       : '',
     r.invoiceAmt ? parseFloat(r.invoiceAmt) || r.invoiceAmt : ''
   ])];
-
   const ws = XLSX.utils.aoa_to_sheet(data);
-
-  // Column widths
-  ws['!cols'] = [
-    {wch:5},{wch:12},{wch:38},{wch:16},{wch:14},{wch:22},
-    {wch:22},{wch:13},{wch:13},{wch:13},{wch:13},
-    {wch:14},{wch:12},{wch:12},{wch:16}
-  ];
-
-  // Header row style
+  ws['!cols'] = [{wch:5},{wch:12},{wch:38},{wch:16},{wch:14},{wch:22},{wch:22},{wch:13},{wch:13},{wch:13},{wch:13},{wch:14},{wch:12},{wch:12},{wch:16}];
   headers.forEach((_, ci) => {
-    const cell = XLSX.utils.encode_cell({ r: 0, c: ci });
-    if (ws[cell]) ws[cell].s = {
-      font: { bold: true, color: { rgb: '1a1814' } },
-      fill: { fgColor: { rgb: 'FFE082' } },
-      alignment: { horizontal: 'center', wrapText: true }
-    };
+    const cell = XLSX.utils.encode_cell({ r:0, c:ci });
+    if (ws[cell]) ws[cell].s = { font: { bold:true, color:{rgb:'1a1814'} }, fill: { fgColor:{rgb:'FFE082'} }, alignment: { horizontal:'center', wrapText:true } };
   });
-
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Invoice Data');
-
-  const ts = new Date().toISOString().slice(0,10);
-  XLSX.writeFile(wb, `invoices_${ts}.xlsx`);
-  showToast('✅ Excel downloaded!', 'ok');
+  XLSX.writeFile(wb, `invoices_${new Date().toISOString().slice(0,10)}.xlsx`);
+  showToast('✓ EXCEL FILE EXPORTED SUCCESSFULLY', 'ok');
 }
 
 downloadBtn.addEventListener('click', downloadExcel);
 downloadBtn2.addEventListener('click', downloadExcel);
 
-// ── Toast ──
 let toastTimer;
-function showToast(msg, type = 'ok') {
+function showToast(msg, type='ok') {
   const t = document.getElementById('toast');
   t.textContent = msg;
   t.className = 'toast show ' + type;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { t.className = 'toast'; }, 3000);
+  toastTimer = setTimeout(() => { t.className = 'toast'; }, 3200);
 }
 </script>
 </body>
